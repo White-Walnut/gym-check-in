@@ -6,13 +6,35 @@
 // (build.publish in package.json, electron-updater itself) is unaffected: that config is what tells
 // the *installed app* where to check for updates, completely separate from how a release got
 // uploaded in the first place.
-const { execFileSync } = require('node:child_process');
+const { execFileSync, execSync } = require('node:child_process');
 const path = require('node:path');
 const fs = require('node:fs');
 
 const pkg = require('../package.json');
 const tag = `v${pkg.version}`;
-const distDir = path.join(__dirname, '..', 'dist');
+const rootDir = path.join(__dirname, '..');
+const distDir = path.join(rootDir, 'dist');
+
+// Real, readable release notes from actual commit messages since the last release -- not GitHub's
+// `--generate-notes`, which only produces a meaningful summary when changes come in through pull
+// requests; every change here lands as a direct commit to main, so that flag was only ever
+// generating an empty-looking "Full Changelog: compare link" and nothing else.
+function buildReleaseNotes() {
+  try {
+    const previousTag = execSync(`git describe --tags --abbrev=0 ${tag}^`, { cwd: rootDir }).toString().trim();
+    const commits = execSync(`git log ${previousTag}..${tag} --pretty=format:%s`, { cwd: rootDir })
+      .toString()
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      // The version-bump commit itself ("1.9.5") is noise -- every release has exactly one and it
+      // says nothing about what changed.
+      .filter((line) => !/^\d+\.\d+\.\d+$/.test(line));
+    return commits.length ? commits.map((line) => `- ${line}`).join('\n') : 'No notable changes.';
+  } catch {
+    return 'Initial release.';
+  }
+}
 
 const expectedNames = [
   `Gym-Check-in-Setup-${pkg.version}.exe`,
@@ -28,11 +50,13 @@ if (missing.length) {
   process.exit(1);
 }
 
+const notes = buildReleaseNotes();
 console.log(`Publishing ${tag} to GitHub (${files.length} file(s))...`);
+console.log(`Release notes:\n${notes}\n`);
 try {
-  execFileSync('gh', ['release', 'create', tag, ...files, '--title', tag, '--generate-notes'], {
+  execFileSync('gh', ['release', 'create', tag, ...files, '--title', tag, '--notes', notes], {
     stdio: 'inherit',
-    cwd: path.join(__dirname, '..')
+    cwd: rootDir
   });
 } catch (error) {
   console.error('\ngh release create failed -- see the output above.');
