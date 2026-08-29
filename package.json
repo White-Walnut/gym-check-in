@@ -1,6 +1,6 @@
 {
   "name": "gym-check-in",
-  "version": "1.9.3",
+  "version": "1.9.4",
   "description": "Offline RFID gym check-in kiosk",
   "main": "src/main.js",
   "author": "",
