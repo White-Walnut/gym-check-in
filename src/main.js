@@ -1,0 +1,853 @@
+const { app, BrowserWindow, ipcMain, dialog, screen, Notification, shell, session } = require('electron');
+const fs = require('node:fs');
+const path = require('node:path');
+const { pathToFileURL } = require('node:url');
+const { GymDatabase, normaliseUid } = require('./database');
+const { localDateString } = require('./shared/dates');
+const { resolvePhotoPath, isContainedIn, isAllowedImageExtension } = require('./shared/photo-paths');
+const { checkinNotificationCopy } = require('./shared/checkin-notification');
+const { toCsv } = require('./shared/csv');
+const { parseCapturedPhotoDataUrl } = require('./shared/photo-capture');
+const { wireUpdater, checkForUpdatesManually } = require('./updater');
+
+// --- Windows ---------------------------------------------------------------------------------
+// Normally there's just one window doing double duty (kiosk display + admin-as-a-modal), same as
+// always. When two monitors are detected and "dual-screen" is enabled in Settings, two separate
+// windows are created instead: `kioskWindow` (customer-facing, on one display) and `staffWindow`
+// (admin content rendered directly on the page, not as a modal, on the other display). `staffWindow`
+// stays null in single-window mode -- check it, not a separate flag, to tell the modes apart.
+let kioskWindow;
+let staffWindow;
+let gymDatabase;
+let databasePath;
+let photosDir;
+const smokeArgument = process.argv.find((argument) => argument.startsWith('--smoke-dir='));
+const smokeDirectory = smokeArgument ? smokeArgument.slice('--smoke-dir='.length) : null;
+// Normal smoke mode always forces single-window (deterministic, no real display dependency). This
+// flag opts a smoke run into the real dual-screen path instead, when actual hardware supports it --
+// see createWindows() and runSmokeCapture() below. Verification-only; never set in production.
+const dualScreenSmoke = process.argv.includes('--dual-screen-smoke');
+const rendererErrors = [];
+
+function staffFacingWindow() {
+  return staffWindow || kioskWindow;
+}
+
+const ASSETS_DIR = path.join(__dirname, '..', 'assets');
+const DEMO_PHOTOS_DIR = path.join(ASSETS_DIR, 'members');
+const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
+
+const publicErrors = new Set([
+  'invalid_uid', 'invalid_name', 'invalid_membership_type', 'invalid_date',
+  'invalid_passes', 'invalid_member', 'invalid_status', 'member_not_found', 'card_exists',
+  'not_authorized', 'invalid_pin', 'wrong_pin', 'wrong_recovery_code', 'invalid_amount',
+  'invalid_photo', 'invalid_retention_days', 'cancelled'
+]);
+
+function adminResult(work) {
+  try {
+    return { ok: true, data: work() };
+  } catch (error) {
+    console.error('Admin operation failed:', error);
+    return { ok: false, error: publicErrors.has(error.message) ? error.message : 'operation_failed' };
+  }
+}
+
+// Deletes a member's uploaded photo file, but only if it's a real file this app owns (inside
+// photosDir) -- never a demo: token, and never anything outside that one directory.
+function deleteOwnedPhotoFile(photoPath) {
+  if (!photoPath || typeof photoPath !== 'string' || photoPath.startsWith('demo:')) return;
+  const resolved = path.resolve(photoPath);
+  if (!isContainedIn(path.resolve(photosDir), resolved)) return;
+  try {
+    fs.unlinkSync(resolved);
+  } catch (error) {
+    console.error('Could not delete old photo file:', error);
+  }
+}
+
+// --- Check-in notifications --------------------------------------------------------------------
+// Staff needs to know a check-in happened -- and whether the card was actually valid -- even when
+// this app isn't the focused window (they're in the MultiSport app, or just looking elsewhere).
+// A native OS notification handles the "not looking at this app" case; it appears above whatever
+// currently has focus without any window-management tricks. Text always states validity plainly
+// (not just "checked in") since that's the part staff actually needs to act on.
+
+// Single beep for an approved entry, a quick double-beep for a denial -- the same pattern a
+// standalone door-badge reader uses, so it reads correctly by ear without staff looking up. Uses
+// the OS system beep rather than a custom tone: no audio asset to ship, always audible on the PC's
+// default output regardless of which window (if any) has focus, and it can't double up when two
+// windows independently render the same check-in (dual-screen mode) since it only ever fires once,
+// here in the main process.
+function playCheckInChime(allowed) {
+  shell.beep();
+  if (!allowed) setTimeout(() => shell.beep(), 180);
+}
+
+function notifyCheckIn(result) {
+  playCheckInChime(Boolean(result.allowed));
+  if (!Notification.isSupported()) return;
+  const { title, body } = checkinNotificationCopy(result);
+  new Notification({ title, body, silent: true }).show();
+}
+
+// --- Staff session (authorization boundary) -----------------------------------------------------
+// This is the actual security boundary. The renderer's PIN screen is only a UI convenience; every
+// mutating/PII-exposing IPC handler below re-checks `staffUnlocked` itself, so opening DevTools and
+// calling window.gym.* directly cannot bypass it the way it could before.
+
+const STAFF_SESSION_MS = 5 * 60 * 1000;
+const LOCKOUT_THRESHOLD = 5;
+const LOCKOUT_BASE_MS = 5_000;
+const LOCKOUT_MAX_MS = 60_000;
+
+let staffUnlocked = false;
+let staffUnlockTimer = null;
+let failedPinAttempts = 0;
+let lockoutUntil = 0;
+
+// A separate counter/lockout for the recovery code, so a mistyped PIN never burns a recovery
+// attempt (or vice versa).
+let failedRecoveryAttempts = 0;
+let recoveryLockoutUntil = 0;
+
+function lockStaff() {
+  staffUnlocked = false;
+  if (staffUnlockTimer) {
+    clearTimeout(staffUnlockTimer);
+    staffUnlockTimer = null;
+  }
+}
+
+function unlockStaff() {
+  staffUnlocked = true;
+  failedPinAttempts = 0;
+  if (staffUnlockTimer) clearTimeout(staffUnlockTimer);
+  staffUnlockTimer = setTimeout(lockStaff, STAFF_SESSION_MS);
+}
+
+function assertUnlocked() {
+  if (!staffUnlocked) throw new Error('not_authorized');
+}
+
+// --- Kiosk lockdown --------------------------------------------------------------------------
+// A soft deterrent, not a real OS lockdown -- see the comment on GymDatabase.setKioskLockdown.
+// Never applied in smoke-capture mode, which needs normal window control to run its script.
+// Applies only to a genuine customer-facing kiosk display -- the second monitor in dual-screen mode.
+// `kioskWindow` in single-window mode is actually the staff's own dashboard now (see createWindows),
+// so this must never be forced onto it -- kioskWindowIsCustomerFacing tracks which case is live.
+let kioskLockdownEnabled = false;
+let kioskWindowIsCustomerFacing = false;
+
+// --- Dual-screen -------------------------------------------------------------------------------
+// Whether to use two windows when two displays are detected -- see GymDatabase.getDualScreenEnabled.
+// Read once at startup; changing it in Settings takes effect on the next launch rather than trying
+// to tear down and rebuild live windows while the app is running.
+let dualScreenEnabled = false;
+
+function windowOptions(extra = {}) {
+  return {
+    width: 1280,
+    height: 820,
+    minWidth: 900,
+    minHeight: 650,
+    backgroundColor: '#0b0d0c',
+    icon: path.join(__dirname, '..', 'assets', 'icon.png'),
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      // DevTools exposes the full window.gym IPC bridge to the console; only ever enable it for
+      // `npm start`/`--dev`, never in a packaged/installed build reachable at a kiosk.
+      devTools: !app.isPackaged,
+      // Smoke mode already keeps the database (:memory:) and photos (see photosDir) out of the real
+      // userData profile -- browser storage (localStorage, used for the theme/mode choice) needs the
+      // same treatment. A partition name with no "persist:" prefix is in-memory and discarded when
+      // the app quits, so a smoke run can never read or leave behind the real appearance preference.
+      partition: smokeDirectory ? 'smoke' : undefined
+    },
+    ...extra
+  };
+}
+
+function attachCommonWindowBehaviors(win, { isKioskDisplay }) {
+  win.webContents.on('preload-error', (_event, preloadPath, error) => {
+    console.error('Preload script failed to load:', preloadPath, error);
+  });
+  // Smoke mode captures screenshots, not console output, so a broken script (e.g. a load-time
+  // SyntaxError from one of the shared <script> files) can silently fail a feature without ever
+  // showing up in a screenshot -- only a click that happens to hit the broken code path would
+  // reveal it. Recording renderer errors here and dumping them at the end of the run closes that
+  // gap without needing to click every feature.
+  if (smokeDirectory) {
+    win.webContents.on('console-message', (event) => {
+      if (event.level === 'error') rendererErrors.push(`${event.message} (${event.sourceId}:${event.lineNumber})`);
+    });
+  }
+  if (isKioskDisplay) {
+    win.on('close', (event) => {
+      if (!smokeDirectory && kioskLockdownEnabled) event.preventDefault();
+    });
+  }
+  win.webContents.on('before-input-event', (event, input) => {
+    if (isKioskDisplay && !smokeDirectory && kioskLockdownEnabled) return; // kiosk mode owns fullscreen while locked
+    if (input.type === 'keyDown' && input.key === 'F11') {
+      win.setFullScreen(!win.isFullScreen());
+      event.preventDefault();
+    }
+  });
+}
+
+async function createWindows() {
+  const displays = (smokeDirectory && !dualScreenSmoke) ? [] : screen.getAllDisplays();
+  // --dual-screen-smoke explicitly opts a smoke run into this path for real-hardware verification --
+  // it must force this on regardless of the Settings toggle's default, since a fresh smoke run's
+  // in-memory database always sees that default (currently off; see GymDatabase.getDualScreenEnabled).
+  const useDualScreen = (!smokeDirectory || dualScreenSmoke) && (dualScreenSmoke || dualScreenEnabled) && displays.length >= 2;
+  const indexPath = path.join(__dirname, 'renderer', 'index.html');
+
+  if (!useDualScreen) {
+    // This window IS the staff dashboard (see applyWindowRole('single') in renderer.js) -- there's
+    // no customer-facing screen to lock down here, so kiosk lockdown never applies to it regardless
+    // of the Settings toggle (see kioskWindowIsCustomerFacing).
+    kioskWindowIsCustomerFacing = false;
+    kioskWindow = new BrowserWindow(windowOptions({
+      show: !smokeDirectory,
+      title: 'Gym Check-in'
+    }));
+    staffWindow = null;
+    attachCommonWindowBehaviors(kioskWindow, { isKioskDisplay: false });
+    await kioskWindow.loadFile(indexPath);
+  } else {
+    // getAllDisplays() has no guaranteed order (it's not "primary first") -- resolve the actual
+    // primary explicitly. The staff dashboard belongs on the display Windows itself considers
+    // primary (the one staff actually sits in front of); the customer-facing kiosk display always
+    // goes on the other one -- monitor two, never monitor one.
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const secondaryDisplay = displays.find((display) => display.id !== primaryDisplay.id) || displays[0];
+    kioskWindowIsCustomerFacing = true;
+
+    // Both windows must exist (be assigned to kioskWindow/staffWindow) *before* either one starts
+    // loading the page -- loadFile()'s promise only resolves after the renderer has already run its
+    // top-level script, which includes the very first app-info request. If staffWindow were created
+    // after `await kioskWindow.loadFile(...)`, the kiosk window's own first app-info call would race
+    // ahead of staffWindow existing at all, and the main process would (wrongly, just for that one
+    // request) resolve its role as 'single' instead of 'kiosk'.
+    kioskWindow = new BrowserWindow(windowOptions({
+      x: secondaryDisplay.bounds.x,
+      y: secondaryDisplay.bounds.y,
+      width: secondaryDisplay.bounds.width,
+      height: secondaryDisplay.bounds.height,
+      show: !smokeDirectory,
+      fullscreen: !smokeDirectory && !kioskLockdownEnabled,
+      kiosk: !smokeDirectory && kioskLockdownEnabled,
+      // Staff needs to freely switch to other apps (e.g. a separate MultiSport terminal app) on
+      // their own screen without ever risking covering or losing focus-priority on the customer-
+      // facing display -- alwaysOnTop plus staying out of the taskbar/alt-tab list keeps this
+      // window "always up" regardless of what else is running.
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      title: 'Gym Check-in'
+    }));
+    staffWindow = new BrowserWindow(windowOptions({
+      x: primaryDisplay.bounds.x,
+      y: primaryDisplay.bounds.y,
+      width: primaryDisplay.bounds.width,
+      height: primaryDisplay.bounds.height,
+      show: !smokeDirectory,
+      title: 'Gym Check-in — Staff'
+    }));
+    attachCommonWindowBehaviors(kioskWindow, { isKioskDisplay: true });
+    attachCommonWindowBehaviors(staffWindow, { isKioskDisplay: false });
+    await Promise.all([kioskWindow.loadFile(indexPath), staffWindow.loadFile(indexPath)]);
+  }
+
+  if (smokeDirectory) {
+    if (staffWindow) await runDualScreenSmokeCapture();
+    else await runSmokeCapture();
+  }
+}
+
+// Verifies the two things unique to dual-screen mode: each window resolves the right windowRole
+// (kiosk vs staff) and renders accordingly, and a check-in caught by the *staff* window's own
+// keyboard focus still ends up fully displayed on the kiosk window via the main-process relay --
+// see the 'check-in' handler below. The single-window path has its own much more thorough capture
+// (runSmokeCapture) that this deliberately doesn't duplicate.
+async function runDualScreenSmokeCapture() {
+  fs.mkdirSync(smokeDirectory, { recursive: true });
+  const captureBoth = async (label) => {
+    await captureWindowScreenshot(kioskWindow, `dual-kiosk-${label}.png`);
+    await captureWindowScreenshot(staffWindow, `dual-staff-${label}.png`);
+  };
+
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  // Fresh state: kiosk shows the idle check-in screen with no admin affordance at all; staff shows
+  // the first-run PIN setup screen, full-page (no modal backdrop/centering).
+  await captureBoth('01-fresh');
+
+  await staffWindow.webContents.executeJavaScript(
+    "staffLockNewPin.value = '1234'; staffLockConfirmPin.value = '1234'; staffLockSetupForm.requestSubmit();"
+  );
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  await captureWindowScreenshot(staffWindow, 'dual-staff-02-recovery-code.png');
+  await staffWindow.webContents.executeJavaScript('staffLockRecoveryContinue.click();');
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  // Staff window now shows admin content directly -- no PIN screen, no modal chrome, no kiosk stage.
+  await captureWindowScreenshot(staffWindow, 'dual-staff-03-admin-open.png');
+
+  // A scan the KIOSK window itself catches -- ordinary path, should show the full result there.
+  await kioskWindow.webContents.executeJavaScript("submitUid('10000001')");
+  await new Promise((resolve) => setTimeout(resolve, 3000));
+  await captureWindowScreenshot(kioskWindow, 'dual-kiosk-02-local-checkin.png');
+  await kioskWindow.webContents.executeJavaScript('resetToIdle();');
+
+  // A scan the STAFF window catches instead (the case this phase exists for -- staff had focus on
+  // their own screen when someone tapped a card at the kiosk). The staff window should show a
+  // toast; the kiosk window should independently receive the full result via the relay.
+  await staffWindow.webContents.executeJavaScript("submitUid('10000003')");
+  await new Promise((resolve) => setTimeout(resolve, 1200));
+  await captureBoth('03-remote-checkin');
+
+  const errorLogPath = path.join(smokeDirectory, 'console-errors.log');
+  if (rendererErrors.length) {
+    fs.writeFileSync(errorLogPath, rendererErrors.join('\n'));
+    console.error(`${rendererErrors.length} renderer console error(s) during dual-screen smoke capture -- see ${errorLogPath}`);
+    rendererErrors.forEach((line) => console.error('  ', line));
+  } else if (fs.existsSync(errorLogPath)) {
+    fs.unlinkSync(errorLogPath);
+  }
+
+  kioskWindow.destroy();
+  staffWindow.destroy();
+  app.quit();
+}
+
+async function captureWindowScreenshot(win, fileName) {
+  // On a hidden (show: false) window, the first capturePage() after a DOM change can occasionally
+  // return a stale compositor frame from before the change. A cheap throwaway capture forces a fresh
+  // one before the real capture that gets saved.
+  await win.webContents.capturePage();
+  const image = await win.webContents.capturePage();
+  fs.writeFileSync(path.join(smokeDirectory, fileName), image.toPNG());
+}
+
+async function runSmokeCapture() {
+  const mainWindow = kioskWindow; // single-window smoke path -- this window is the staff dashboard
+  fs.mkdirSync(smokeDirectory, { recursive: true });
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  // The dashboard opens (and, via appInfo.smoke, auto-unlocks) on its own at launch now -- there's no
+  // separate check-in stage to show first. This is already the "Add new member" tab, unlocked.
+  await captureScreenshot('01-ready.png');
+  // Czech diacritics: type a name that exercises the characters the bundled font's latin-ext subset
+  // specifically has to cover (ěščřžáíéůú), and screenshot it -- confirms real glyphs render, not
+  // tofu/missing-glyph boxes, rather than just trusting the font's declared unicode-range.
+  await mainWindow.webContents.executeJavaScript(
+    "document.querySelector('#first-name').value = 'Přemysl'; document.querySelector('#last-name').value = 'Škvrňata';"
+  );
+  await captureScreenshot('01b-czech-diacritics.png');
+  await mainWindow.webContents.executeJavaScript(
+    "document.querySelector('#first-name').value = ''; document.querySelector('#last-name').value = '';"
+  );
+  // Force the first-run PIN flow back open on top of that auto-unlock, so it -- setup, then the
+  // one-time recovery code reveal -- is captured for real here, by actually submitting the form (not
+  // just showing it), the same way a brand-new install would actually experience it.
+  await mainWindow.webContents.executeJavaScript("staffSessionActive = false; showStaffLock()");
+  await new Promise((resolve) => setTimeout(resolve, 800));
+  await captureScreenshot('02-staff-pin-setup.png');
+  await mainWindow.webContents.executeJavaScript(
+    "staffLockNewPin.value = '1234'; staffLockConfirmPin.value = '1234'; staffLockSetupForm.requestSubmit();"
+  );
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  await captureScreenshot('02b-recovery-code-reveal.png');
+  await mainWindow.webContents.executeJavaScript("staffLockRecoveryContinue.click()");
+  // The dashboard has no check-in stage of its own any more (see applyWindowRole('single') in
+  // renderer.js) -- every check-in below shows only as a toast plus an activity-feed entry, which is
+  // exactly what these screenshots are verifying still works correctly with the dashboard as the
+  // permanent, PIN-gated default screen.
+  await mainWindow.webContents.executeJavaScript("submitUid('10000001')");
+  await new Promise((resolve) => setTimeout(resolve, 800));
+  await captureScreenshot('03-approved.png');
+  await mainWindow.webContents.executeJavaScript("submitUid('UNKNOWN999')");
+  await new Promise((resolve) => setTimeout(resolve, 800));
+  await captureScreenshot('04-denied.png');
+  // Not openAdmin('add', uid) (that was the old check-in stage's "Assign to new member" button,
+  // which doesn't exist any more): click the real activity-feed entry for the unknown card just
+  // above, exactly the way staff actually would, so this exercises the genuine replacement path.
+  await mainWindow.webContents.executeJavaScript(
+    "[...document.querySelectorAll('.activity-feed-row')].find(row => row.textContent.includes('Unknown card')).click();" +
+    "document.querySelector('input[value=\"punchcard\"]').click();"
+  );
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  await captureScreenshot('05-admin-add.png');
+  // The scenario this feature originally fixed -- a member checks in while staff is mid-task (here,
+  // still filling in a new member's form) -- is now simply how every check-in behaves on this window:
+  // the in-progress form stays untouched and the check-in is still recorded, as a toast/feed entry.
+  await mainWindow.webContents.executeJavaScript("submitUid('10000001')");
+  await new Promise((resolve) => setTimeout(resolve, 700));
+  await captureScreenshot('05b-checkin-while-admin-open.png');
+  await mainWindow.webContents.executeJavaScript("submitUid('10000003')");
+  await new Promise((resolve) => setTimeout(resolve, 800));
+  await captureScreenshot('06-punchcard.png');
+  await mainWindow.webContents.executeJavaScript("openAdmin('renew'); memberSearch.value = ''; runMemberSearch()");
+  await new Promise((resolve) => setTimeout(resolve, 1200));
+  await captureScreenshot('07-admin-renew.png');
+  // Clicking a member's name (not the Edit button) should open the same editor -- exercise the real
+  // click listener, not just call openMemberEditor() directly, so this actually verifies the new
+  // click-to-edit affordance rather than assuming it's wired correctly.
+  await mainWindow.webContents.executeJavaScript("document.querySelector('.member-row-details').click()");
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  await captureScreenshot('07c-click-name-to-edit.png');
+  await mainWindow.webContents.executeJavaScript("closeMemberEditor()");
+  await mainWindow.webContents.executeJavaScript("expiringDaysInput.value = '90'; showExpiringButton.click()");
+  await new Promise((resolve) => setTimeout(resolve, 700));
+  await captureScreenshot('07b-expiring-soon.png');
+  // Not clearExpiringButton.click(): that dispatches its async handler fire-and-forget (a DOM
+  // click() call doesn't return the handler's promise), so the very next line could race ahead of
+  // visibleMembers actually being repopulated. executeJavaScript awaits a returned promise, so calling
+  // runMemberSearch() directly guarantees the list is back before the next step reads visibleMembers.
+  await mainWindow.webContents.executeJavaScript("clearExpiringButton.hidden = true; runMemberSearch()");
+  await mainWindow.webContents.executeJavaScript("openMemberEditor(visibleMembers.find(member => member.cardUid === '10000001'), true)");
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  await captureScreenshot('08-edit-member.png');
+  // "Change photo…" now offers a choice instead of jumping straight to the file picker -- verify the
+  // choice appears, and that picking "Take photo" opens the camera modal without crashing either way:
+  // on a machine with no camera it should fail gracefully (a status message, not a blank freeze); on
+  // one with a real camera (some dev machines) it should show a live preview and actually save.
+  await mainWindow.webContents.executeJavaScript("changePhotoToggle.click()");
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  await captureScreenshot('08c-photo-source-choice.png');
+  await mainWindow.webContents.executeJavaScript("takePhotoButton.click()");
+  await new Promise((resolve) => setTimeout(resolve, 2500));
+  await captureScreenshot('08d-camera-modal.png');
+  await mainWindow.webContents.executeJavaScript(
+    "if (!cameraCaptureButton.hidden) cameraCaptureButton.click();"
+  );
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  await captureScreenshot('08e-camera-captured-preview.png');
+  await mainWindow.webContents.executeJavaScript(
+    "if (!cameraUseButton.hidden) cameraUseButton.click(); else cameraCancelButton.click();"
+  );
+  await new Promise((resolve) => setTimeout(resolve, 700));
+  await captureScreenshot('08f-photo-saved.png');
+  await mainWindow.webContents.executeJavaScript("closeMemberEditor(); setAdminTab('history')");
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  await captureScreenshot('08g-checkin-history.png');
+  await mainWindow.webContents.executeJavaScript("setAdminTab('settings')");
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  await captureScreenshot('09-admin-settings.png');
+  // Appearance: click through each color scheme and the light/dark toggle for real, and confirm the
+  // choice actually round-trips through localStorage (not just that the swatch looks selected) --
+  // this is what theme.js reads on the next launch to avoid a flash of the wrong theme.
+  await mainWindow.webContents.executeJavaScript("document.querySelector('[data-theme-choice=\"zinc\"]').click()");
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  await captureScreenshot('09a-theme-zinc.png');
+  await mainWindow.webContents.executeJavaScript("document.querySelector('[data-theme-choice=\"emerald\"]').click()");
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  await captureScreenshot('09b-theme-emerald.png');
+  await mainWindow.webContents.executeJavaScript("appearanceModeToggle.click()");
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  await captureScreenshot('09c-theme-emerald-light.png');
+  const savedTheme = await mainWindow.webContents.executeJavaScript("localStorage.getItem('gym-checkin-theme')");
+  const savedMode = await mainWindow.webContents.executeJavaScript("localStorage.getItem('gym-checkin-mode')");
+  if (savedTheme !== 'emerald' || savedMode !== 'light') {
+    throw new Error(`Appearance did not persist to localStorage as expected: theme=${savedTheme} mode=${savedMode}`);
+  }
+  await mainWindow.webContents.executeJavaScript(
+    "document.querySelector('[data-theme-choice=\"indigo\"]').click(); appearanceModeToggle.click();"
+  );
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  await captureScreenshot('09d-theme-indigo-dark.png');
+  await mainWindow.webContents.executeJavaScript(
+    "document.querySelector('[data-theme-choice=\"slate\"]').click();"
+  );
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  // The Lock button replaces the old "close admin" X now that the dashboard is a permanent page --
+  // verify the full round trip for real: click it, confirm the PIN screen reappears (not a blank/
+  // hidden page), then unlock again and confirm the dashboard returns to the same tab.
+  await mainWindow.webContents.executeJavaScript("adminClose.click()");
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  await captureScreenshot('10-locked.png');
+  await mainWindow.webContents.executeJavaScript("staffLockPinInput.value = '1234'; staffLockEnterForm.requestSubmit();");
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  await captureScreenshot('10b-unlocked-again.png');
+
+  const errorLogPath = path.join(smokeDirectory, 'console-errors.log');
+  if (rendererErrors.length) {
+    fs.writeFileSync(errorLogPath, rendererErrors.join('\n'));
+    console.error(`${rendererErrors.length} renderer console error(s) during smoke capture -- see ${errorLogPath}`);
+    rendererErrors.forEach((line) => console.error('  ', line));
+  } else if (fs.existsSync(errorLogPath)) {
+    fs.unlinkSync(errorLogPath); // stale from a previous failing run in the same directory
+  }
+
+  mainWindow.destroy();
+  app.quit();
+}
+
+async function captureScreenshot(fileName) {
+  await captureWindowScreenshot(kioskWindow, fileName);
+}
+
+app.whenReady().then(async () => {
+  // Webcam photo capture (member editor's "Take photo") needs camera access, which Electron blocks
+  // by default. Safe to always allow here: this app never loads any remote/third-party content, so
+  // every request can only ever come from our own local pages, never a stray website.
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    callback(permission === 'media');
+  });
+  session.defaultSession.setPermissionCheckHandler((_webContents, permission) => permission === 'media');
+
+  databasePath = smokeDirectory ? ':memory:' : path.join(app.getPath('userData'), 'gym-checkin.sqlite');
+  // Smoke mode must never write into the real userData folder -- the database already avoids this
+  // (in-memory above), but photos didn't: a smoke run that actually captures/saves a photo (the
+  // webcam "Take photo" flow, on a machine that has a real camera) used to land a real file in the
+  // real app-data folder, outliving the smoke run itself. Route it into the throwaway smoke
+  // directory instead, same as the screenshots and console-errors.log already are.
+  photosDir = smokeDirectory ? path.join(smokeDirectory, 'photos') : path.join(app.getPath('userData'), 'photos');
+
+  try {
+    gymDatabase = new GymDatabase(databasePath);
+  } catch (error) {
+    console.error('Failed to open the member database:', error);
+    dialog.showErrorBox(
+      'Gym Check-in could not start',
+      'The member database could not be opened or upgraded, so the app cannot continue.\n\n'
+      + `Details: ${error.message}\n\n`
+      + `If a schema upgrade was in progress, a backup copy may have been saved next to:\n${databasePath}\n`
+      + '(look for a file named "gym-checkin.pre-migration-<timestamp>.sqlite").\n\n'
+      + 'Please back up the database file and contact support before trying again.'
+    );
+    app.quit();
+    return;
+  }
+
+  gymDatabase.seedDemoMembers();
+  kioskLockdownEnabled = gymDatabase.getKioskLockdown();
+  dualScreenEnabled = gymDatabase.getDualScreenEnabled();
+
+  // GDPR storage-limitation: prune check-ins past the configured retention window on every launch.
+  // Cheap at this dataset size and means nobody has to remember to do it by hand.
+  const purged = gymDatabase.purgeOldCheckIns();
+  if (purged > 0) console.log(`Purged ${purged} check-in record(s) past the retention window.`);
+
+  // The smoke-capture path (--smoke-dir=, an in-memory DB reachable only via a CLI flag, never from
+  // the packaged end-user app) drives the admin UI directly for screenshots; it isn't a real staff
+  // session, so it starts pre-unlocked rather than needing a PIN typed via executeJavaScript.
+  if (smokeDirectory) unlockStaff();
+
+  ipcMain.handle('check-in', (event, uid) => {
+    let result;
+    try {
+      result = gymDatabase.checkIn(uid);
+    } catch (error) {
+      console.error('Check-in failed:', error);
+      result = { allowed: false, reason: 'system_error', uid: normaliseUid(uid) };
+    }
+    // Dual-screen: a scan can be physically caught by either window depending on which one has OS
+    // focus. If it wasn't the kiosk window itself, push the result there so the customer-facing
+    // display still shows it -- the window that actually caught it shows its own local toast.
+    if (staffWindow && kioskWindow && event.sender.id !== kioskWindow.webContents.id && !kioskWindow.isDestroyed()) {
+      kioskWindow.webContents.send('remote-checkin-result', result);
+    }
+    // Smoke captures fire dozens of synthetic scans headlessly; a real popup/beep for each would be
+    // noise, not a bug report, so skip notifications there rather than suppressing this in production.
+    if (!smokeDirectory) notifyCheckIn(result);
+    // The "last check-in" glance in the admin header updates from this broadcast alone (not from the
+    // window that made the request directly) so it stays correct in every window-mode combination --
+    // including dual-screen, where the kiosk window can catch a scan the staff window never sees any
+    // other way. Harmless on the kiosk window itself: kiosk role never renders the admin header this
+    // feeds, since it can't open the admin panel at all (see applyWindowRole in renderer.js).
+    for (const win of [kioskWindow, staffWindow]) {
+      if (win && !win.isDestroyed()) win.webContents.send('checkin-glance-update', result);
+    }
+    return result;
+  });
+  ipcMain.handle('search-check-ins', (_event, filters) => adminResult(() => {
+    assertUnlocked();
+    return gymDatabase.searchCheckIns(filters);
+  }));
+  ipcMain.handle('export-check-ins-csv', async (_event, filters) => {
+    if (!staffUnlocked) return { ok: false, error: 'not_authorized' };
+    const CSV_EXPORT_CAP = 5000;
+    const rows = gymDatabase.searchCheckIns({ ...filters, limit: CSV_EXPORT_CAP, offset: 0 });
+    const csv = toCsv(
+      [
+        { key: 'checkedInAt', label: 'Checked in at' },
+        { key: 'name', label: 'Name' },
+        { key: 'uid', label: 'Card UID' },
+        { key: 'outcome', label: 'Outcome' },
+        { key: 'reason', label: 'Reason' }
+      ],
+      rows.map((row) => ({ ...row, outcome: row.allowed ? 'Approved' : 'Denied' }))
+    );
+    const target = await dialog.showSaveDialog(staffFacingWindow(), {
+      title: 'Export check-in history',
+      defaultPath: `gym-checkin-history-${localDateString()}.csv`,
+      filters: [{ name: 'CSV', extensions: ['csv'] }]
+    });
+    if (target.canceled || !target.filePath) return { ok: false, error: 'cancelled' };
+    try {
+      fs.writeFileSync(target.filePath, csv);
+      return { ok: true, data: { path: target.filePath, count: rows.length, truncated: rows.length >= CSV_EXPORT_CAP } };
+    } catch (error) {
+      console.error('Check-in history export failed:', error);
+      return { ok: false, error: 'operation_failed' };
+    }
+  });
+  ipcMain.handle('recent-check-ins', () => gymDatabase.recentCheckIns());
+
+  // --- Staff auth ---------------------------------------------------------------------------------
+  ipcMain.handle('has-staff-pin', () => gymDatabase.hasStaffPin());
+
+  ipcMain.handle('verify-staff-pin', (_event, pin) => {
+    const now = Date.now();
+    if (now < lockoutUntil) {
+      return { ok: false, error: 'locked_out', retryAfterMs: lockoutUntil - now };
+    }
+    if (!gymDatabase.verifyStaffPin(pin)) {
+      failedPinAttempts += 1;
+      if (failedPinAttempts >= LOCKOUT_THRESHOLD) {
+        const backoff = Math.min(LOCKOUT_MAX_MS, LOCKOUT_BASE_MS * 2 ** (failedPinAttempts - LOCKOUT_THRESHOLD));
+        lockoutUntil = now + backoff;
+      }
+      return { ok: false, error: 'wrong_pin' };
+    }
+    unlockStaff();
+    return { ok: true };
+  });
+
+  ipcMain.handle('set-staff-pin', (_event, input) => adminResult(() => {
+    const { recoveryCode } = gymDatabase.setStaffPin(input?.newPin, input?.currentPin);
+    unlockStaff();
+    return { recoveryCode };
+  }));
+
+  ipcMain.handle('lock-staff', () => {
+    lockStaff();
+    return true;
+  });
+
+  ipcMain.handle('reset-staff-pin-with-recovery', (_event, input) => {
+    const now = Date.now();
+    if (now < recoveryLockoutUntil) {
+      return { ok: false, error: 'locked_out', retryAfterMs: recoveryLockoutUntil - now };
+    }
+    const result = adminResult(() => gymDatabase.resetStaffPinWithRecovery(input?.recoveryCode, input?.newPin));
+    if (!result.ok) {
+      if (result.error === 'wrong_recovery_code') {
+        failedRecoveryAttempts += 1;
+        if (failedRecoveryAttempts >= LOCKOUT_THRESHOLD) {
+          const backoff = Math.min(LOCKOUT_MAX_MS, LOCKOUT_BASE_MS * 2 ** (failedRecoveryAttempts - LOCKOUT_THRESHOLD));
+          recoveryLockoutUntil = now + backoff;
+        }
+      }
+      return result;
+    }
+    failedRecoveryAttempts = 0;
+    unlockStaff();
+    return result;
+  });
+
+  ipcMain.handle('regenerate-recovery-code', (_event, input) => adminResult(() => {
+    assertUnlocked();
+    return { recoveryCode: gymDatabase.regenerateRecoveryCodeWithPin(input?.currentPin) };
+  }));
+
+  // --- Admin (all require an unlocked staff session) ----------------------------------------------
+  ipcMain.handle('add-member', (_event, input) => adminResult(() => {
+    assertUnlocked();
+    return gymDatabase.addMember(input);
+  }));
+  ipcMain.handle('update-member', (_event, input) => adminResult(() => {
+    assertUnlocked();
+    return gymDatabase.updateMember(input);
+  }));
+  ipcMain.handle('search-members', (_event, query) => adminResult(() => {
+    assertUnlocked();
+    return gymDatabase.searchMembers(query);
+  }));
+  ipcMain.handle('renew-member', (_event, input) => adminResult(() => {
+    assertUnlocked();
+    return gymDatabase.renewMember(input?.memberId, input?.renewalType, {
+      validUntil: input?.validUntil,
+      amountCents: input?.amountCents
+    });
+  }));
+  ipcMain.handle('delete-member', (_event, input) => adminResult(() => {
+    assertUnlocked();
+    const { photoPath } = gymDatabase.deleteMember(input?.memberId);
+    deleteOwnedPhotoFile(photoPath);
+  }));
+  ipcMain.handle('expiring-members', (_event, withinDays) => adminResult(() => {
+    assertUnlocked();
+    return gymDatabase.expiringMembers(Number(withinDays) || 7);
+  }));
+
+  // --- Member photos --------------------------------------------------------------------------
+  ipcMain.handle('choose-member-photo', async () => {
+    if (!staffUnlocked) return { ok: false, error: 'not_authorized' };
+    const result = await dialog.showOpenDialog(staffFacingWindow(), {
+      title: 'Choose a member photo',
+      properties: ['openFile'],
+      filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp'] }]
+    });
+    if (result.canceled || !result.filePaths.length) return { ok: false, error: 'cancelled' };
+    return { ok: true, data: { path: result.filePaths[0] } };
+  });
+  ipcMain.handle('set-member-photo', (_event, input) => adminResult(() => {
+    assertUnlocked();
+    const memberId = Number(input?.memberId);
+    const sourcePath = String(input?.sourcePath ?? '');
+    if (!Number.isInteger(memberId) || memberId < 1) throw new Error('invalid_member');
+    if (!isAllowedImageExtension(sourcePath)) throw new Error('invalid_photo');
+    let stats;
+    try {
+      stats = fs.statSync(sourcePath);
+    } catch {
+      throw new Error('invalid_photo');
+    }
+    if (!stats.isFile() || stats.size > MAX_PHOTO_BYTES) throw new Error('invalid_photo');
+
+    fs.mkdirSync(photosDir, { recursive: true });
+    const destPath = path.join(photosDir, `${memberId}-${Date.now()}${path.extname(sourcePath).toLowerCase()}`);
+    fs.copyFileSync(sourcePath, destPath);
+
+    const { previousPhotoPath } = gymDatabase.setMemberPhoto(memberId, destPath);
+    deleteOwnedPhotoFile(previousPhotoPath);
+    return { photoPath: destPath };
+  }));
+  // The member editor's "Take photo" -- a still captured client-side from the webcam via canvas,
+  // handed over as a data URL rather than a file path (there's no source file on disk to point at).
+  ipcMain.handle('capture-member-photo', (_event, input) => adminResult(() => {
+    assertUnlocked();
+    const memberId = Number(input?.memberId);
+    if (!Number.isInteger(memberId) || memberId < 1) throw new Error('invalid_member');
+    const parsed = parseCapturedPhotoDataUrl(input?.dataUrl, MAX_PHOTO_BYTES);
+    if (!parsed) throw new Error('invalid_photo');
+
+    fs.mkdirSync(photosDir, { recursive: true });
+    const destPath = path.join(photosDir, `${memberId}-${Date.now()}${parsed.extension}`);
+    fs.writeFileSync(destPath, parsed.buffer);
+
+    const { previousPhotoPath } = gymDatabase.setMemberPhoto(memberId, destPath);
+    deleteOwnedPhotoFile(previousPhotoPath);
+    return { photoPath: destPath };
+  }));
+  ipcMain.handle('remove-member-photo', (_event, input) => adminResult(() => {
+    assertUnlocked();
+    const { previousPhotoPath } = gymDatabase.setMemberPhoto(input?.memberId, null);
+    deleteOwnedPhotoFile(previousPhotoPath);
+  }));
+
+  ipcMain.handle('get-kiosk-lockdown', () => kioskLockdownEnabled);
+  ipcMain.handle('set-kiosk-lockdown', (_event, enabled) => adminResult(() => {
+    assertUnlocked();
+    const value = Boolean(enabled);
+    gymDatabase.setKioskLockdown(value);
+    kioskLockdownEnabled = value;
+    // Only ever forced onto a genuine customer-facing kiosk display. In single-window mode,
+    // `kioskWindow` is the staff's own dashboard (see createWindows) -- applying real OS kiosk mode
+    // to it would trap staff in a borderless fullscreen window with no way to Alt+Tab to MultiSport.
+    if (kioskWindowIsCustomerFacing && kioskWindow && !kioskWindow.isDestroyed()) kioskWindow.setKiosk(value);
+  }));
+
+  ipcMain.handle('get-dual-screen-enabled', () => dualScreenEnabled);
+  ipcMain.handle('set-dual-screen-enabled', (_event, enabled) => adminResult(() => {
+    assertUnlocked();
+    gymDatabase.setDualScreenEnabled(Boolean(enabled));
+    // Deliberately not applied live -- see the comment on the `dualScreenEnabled` variable.
+  }));
+
+  ipcMain.handle('get-checkin-retention-days', () => gymDatabase.getCheckinRetentionDays());
+  ipcMain.handle('set-checkin-retention-days', (_event, days) => adminResult(() => {
+    assertUnlocked();
+    gymDatabase.setCheckinRetentionDays(days);
+  }));
+
+  ipcMain.handle('export-member-data', async (_event, input) => {
+    if (!staffUnlocked) return { ok: false, error: 'not_authorized' };
+    let data;
+    try {
+      data = gymDatabase.exportMemberData(input?.memberId);
+    } catch (error) {
+      console.error('Member data export failed:', error);
+      return { ok: false, error: publicErrors.has(error.message) ? error.message : 'operation_failed' };
+    }
+    const target = await dialog.showSaveDialog(staffFacingWindow(), {
+      title: 'Export member data',
+      defaultPath: `${data.member.name.replace(/[^a-z0-9]+/gi, '-')}-data-export.json`,
+      filters: [{ name: 'JSON', extensions: ['json'] }]
+    });
+    if (target.canceled || !target.filePath) return { ok: false, error: 'cancelled' };
+    try {
+      fs.writeFileSync(target.filePath, JSON.stringify(data, null, 2));
+      return { ok: true, data: { path: target.filePath } };
+    } catch (error) {
+      console.error('Member data export write failed:', error);
+      return { ok: false, error: 'operation_failed' };
+    }
+  });
+
+  ipcMain.handle('export-backup', async () => {
+    if (!staffUnlocked) return { ok: false, error: 'not_authorized' };
+    if (databasePath === ':memory:') return { ok: false, error: 'operation_failed' };
+    const target = await dialog.showSaveDialog(staffFacingWindow(), {
+      title: 'Export database backup',
+      defaultPath: `gym-checkin-backup-${localDateString()}.sqlite`,
+      filters: [{ name: 'SQLite database', extensions: ['sqlite'] }]
+    });
+    if (target.canceled || !target.filePath) return { ok: false, error: 'cancelled' };
+    try {
+      fs.copyFileSync(databasePath, target.filePath);
+      return { ok: true, data: { path: target.filePath } };
+    } catch (error) {
+      console.error('Backup export failed:', error);
+      return { ok: false, error: 'operation_failed' };
+    }
+  });
+
+  ipcMain.handle('app-info', (event) => {
+    let windowRole = 'single';
+    if (staffWindow && kioskWindow) {
+      if (event.sender.id === kioskWindow.webContents.id) windowRole = 'kiosk';
+      else if (event.sender.id === staffWindow.webContents.id) windowRole = 'staff';
+    }
+    return { databasePath, smoke: Boolean(smokeDirectory), windowRole };
+  });
+
+  ipcMain.handle('photo-url', (_event, photoPath) => {
+    const resolved = resolvePhotoPath(photoPath, {
+      demoPhotosDir: DEMO_PHOTOS_DIR,
+      allowedRoots: [ASSETS_DIR, app.getPath('userData')]
+    });
+    return resolved ? pathToFileURL(resolved).href : null;
+  });
+
+  // --- Updater: wired up, never checked automatically. See UPDATER_SETUP.md. ----------------------
+  wireUpdater(() => staffFacingWindow());
+  ipcMain.handle('check-for-updates', async () => {
+    try {
+      await checkForUpdatesManually();
+      return { ok: true };
+    } catch (error) {
+      console.error('Manual update check failed:', error);
+      return { ok: false, error: 'update_check_failed', message: error?.message };
+    }
+  });
+
+  await createWindows();
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindows();
+  });
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('before-quit', () => {
+  if (gymDatabase) gymDatabase.close();
+});
