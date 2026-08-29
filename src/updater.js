@@ -41,12 +41,28 @@ function wireUpdater(getMainWindow) {
   });
   autoUpdater.on('update-not-available', () => send({ status: 'not-available' }));
   autoUpdater.on('error', (error) => send({ status: 'error', message: error?.message || String(error) }));
+  autoUpdater.on('download-progress', (progress) => send({ status: 'downloading', percent: Math.round(progress?.percent || 0) }));
   autoUpdater.on('update-downloaded', (info) => send({ status: 'downloaded', version: info?.version }));
 }
 
 function checkForUpdatesManually() {
   checkIsAutomatic = false;
   return autoUpdater.checkForUpdates();
+}
+
+// Only ever called from the "Download update" button, once a check has already found something --
+// see the 'available' status above. Never automatic (autoDownload stays off), same reasoning as the
+// rest of this file: a shared kiosk shouldn't start pulling a ~100MB download or restart itself
+// without a person actually choosing that, right now.
+function downloadUpdate() {
+  return autoUpdater.downloadUpdate();
+}
+
+// Quits and relaunches into the newly-downloaded version. Only ever called from the "Restart and
+// install" button, which itself only appears after 'update-downloaded' -- i.e. staff has already
+// explicitly asked for this, twice over (download, then install).
+function quitAndInstallUpdate() {
+  autoUpdater.quitAndInstall();
 }
 
 // Called at most once a day from main.js, on launch -- see GymDatabase.getLastUpdateCheckAt. Errors
@@ -60,4 +76,10 @@ function checkForUpdatesAutomatically() {
     .finally(() => { checkIsAutomatic = false; });
 }
 
-module.exports = { wireUpdater, checkForUpdatesManually, checkForUpdatesAutomatically };
+module.exports = {
+  wireUpdater,
+  checkForUpdatesManually,
+  checkForUpdatesAutomatically,
+  downloadUpdate,
+  quitAndInstallUpdate
+};

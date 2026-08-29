@@ -91,6 +91,8 @@ const regenerateRecoveryButton = document.querySelector('#regenerate-recovery-bu
 const exportBackupButton = document.querySelector('#export-backup-button');
 const backupStatus = document.querySelector('#backup-status');
 const checkUpdatesButton = document.querySelector('#check-updates-button');
+const downloadUpdateButton = document.querySelector('#download-update-button');
+const installUpdateButton = document.querySelector('#install-update-button');
 const updateStatusEl = document.querySelector('#update-status');
 const kioskLockdownToggle = document.querySelector('#kiosk-lockdown-toggle');
 const dualScreenToggle = document.querySelector('#dual-screen-toggle');
@@ -1352,18 +1354,60 @@ checkUpdatesButton.addEventListener('click', async () => {
   setStatus(updateStatusEl, 'Checking…');
   const response = await window.gym.checkForUpdates();
   if (!response.ok) {
-    setStatus(updateStatusEl, 'Update check is not set up yet. See UPDATER_SETUP.md.', 'error');
+    setStatus(updateStatusEl, 'Update check failed. See UPDATER_SETUP.md.', 'error');
     checkUpdatesButton.disabled = false;
   }
 });
 
+// Nothing downloads or installs on its own (see src/updater.js) -- these two buttons only ever
+// appear once staff has already taken the previous step: "available" reveals Download, and
+// "downloaded" (below) reveals Restart and install. Each click is its own explicit confirmation.
+downloadUpdateButton.addEventListener('click', async () => {
+  downloadUpdateButton.disabled = true;
+  setStatus(updateStatusEl, 'Downloading update…');
+  const response = await window.gym.downloadUpdate();
+  if (!response.ok) {
+    setStatus(updateStatusEl, 'Download failed. Try again.', 'error');
+    downloadUpdateButton.disabled = false;
+  }
+});
+
+installUpdateButton.addEventListener('click', () => {
+  if (window.confirm('This closes Gym Check-in and reopens it on the new version right away. Continue?')) {
+    window.gym.quitAndInstallUpdate();
+  }
+});
+
 window.gym.onUpdateStatus((payload) => {
-  checkUpdatesButton.disabled = false;
-  if (payload.status === 'checking') setStatus(updateStatusEl, 'Checking for updates…');
-  else if (payload.status === 'available') setStatus(updateStatusEl, `Update ${payload.version || ''} is available.`, 'success');
-  else if (payload.status === 'not-available') setStatus(updateStatusEl, 'You are on the latest version.', 'success');
-  else if (payload.status === 'downloaded') setStatus(updateStatusEl, `Update ${payload.version || ''} downloaded. Restart to install.`, 'success');
-  else if (payload.status === 'error') setStatus(updateStatusEl, 'Update check is not set up yet. See UPDATER_SETUP.md.', 'error');
+  if (payload.status === 'checking') {
+    checkUpdatesButton.disabled = true;
+    downloadUpdateButton.hidden = true;
+    installUpdateButton.hidden = true;
+    setStatus(updateStatusEl, 'Checking for updates…');
+  } else if (payload.status === 'available') {
+    checkUpdatesButton.disabled = false;
+    downloadUpdateButton.hidden = false;
+    downloadUpdateButton.disabled = false;
+    installUpdateButton.hidden = true;
+    setStatus(updateStatusEl, `Update ${payload.version || ''} is available.`, 'success');
+  } else if (payload.status === 'not-available') {
+    checkUpdatesButton.disabled = false;
+    downloadUpdateButton.hidden = true;
+    installUpdateButton.hidden = true;
+    setStatus(updateStatusEl, 'You are on the latest version.', 'success');
+  } else if (payload.status === 'downloading') {
+    downloadUpdateButton.disabled = true;
+    setStatus(updateStatusEl, `Downloading update… ${payload.percent ?? 0}%`);
+  } else if (payload.status === 'downloaded') {
+    checkUpdatesButton.disabled = false;
+    downloadUpdateButton.hidden = true;
+    installUpdateButton.hidden = false;
+    setStatus(updateStatusEl, `Update ${payload.version || ''} downloaded and ready.`, 'success');
+  } else if (payload.status === 'error') {
+    checkUpdatesButton.disabled = false;
+    downloadUpdateButton.disabled = false;
+    setStatus(updateStatusEl, `Update check failed${payload.message ? `: ${payload.message}` : '.'}`, 'error');
+  }
 });
 
 // Shared by the kiosk stage's own "Test a card" (footer, real reader-facing displays) and the

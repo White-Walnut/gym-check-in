@@ -40,6 +40,8 @@ contextBridge.exposeInMainWorld('gym', {
   exportMemberData: (input) => ipcRenderer.invoke('export-member-data', input),
 
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+  downloadUpdate: () => ipcRenderer.invoke('download-update'),
+  quitAndInstallUpdate: () => ipcRenderer.invoke('quit-and-install-update'),
   onUpdateStatus: (callback) => {
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on('update-status', listener);

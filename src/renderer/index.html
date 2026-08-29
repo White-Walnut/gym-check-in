@@ -383,8 +383,12 @@
 
             <div class="settings-block">
               <h3>Updates</h3>
-              <p class="settings-hint">Checks automatically once a day, and never installs anything without you confirming it here first. Use the button below any time for an immediate check.</p>
-              <button id="check-updates-button" class="renew-button" type="button">Check for updates</button>
+              <p class="settings-hint">Checks automatically once a day, and never downloads or installs anything without you confirming it here first. Use the button below any time for an immediate check.</p>
+              <div class="update-actions">
+                <button id="check-updates-button" class="renew-button" type="button">Check for updates</button>
+                <button id="download-update-button" class="renew-button" type="button" hidden>Download update</button>
+                <button id="install-update-button" class="primary-button" type="button" hidden>Restart and install</button>
+              </div>
               <p id="update-status" class="form-status" role="status"></p>
             </div>
           </div>

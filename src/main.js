@@ -8,7 +8,13 @@ const { resolvePhotoPath, isContainedIn, isAllowedImageExtension } = require('./
 const { checkinNotificationCopy } = require('./shared/checkin-notification');
 const { toCsv } = require('./shared/csv');
 const { parseCapturedPhotoDataUrl } = require('./shared/photo-capture');
-const { wireUpdater, checkForUpdatesManually, checkForUpdatesAutomatically } = require('./updater');
+const {
+  wireUpdater,
+  checkForUpdatesManually,
+  checkForUpdatesAutomatically,
+  downloadUpdate,
+  quitAndInstallUpdate
+} = require('./updater');
 
 // --- Windows ---------------------------------------------------------------------------------
 // Normally there's just one window doing double duty (kiosk display + admin-as-a-modal), same as
@@ -437,6 +443,34 @@ async function runSmokeCapture() {
   await mainWindow.webContents.executeJavaScript("setAdminTab('settings')");
   await new Promise((resolve) => setTimeout(resolve, 500));
   await captureScreenshot('09-admin-settings.png');
+  // Update flow: simulate the real autoUpdater events (no actual network check in smoke mode) to
+  // verify the Download/Restart-and-install buttons actually appear and disappear at the right
+  // moments -- this is the exact state machine that was previously a dead end (an update could be
+  // detected but nothing ever let staff act on it).
+  const { autoUpdater: smokeAutoUpdater } = require('electron-updater');
+  const assertUpdateUi = async (label, expected) => {
+    const actual = await mainWindow.webContents.executeJavaScript(
+      '({ downloadHidden: downloadUpdateButton.hidden, installHidden: installUpdateButton.hidden, status: updateStatusEl.textContent })'
+    );
+    for (const key of Object.keys(expected)) {
+      if (actual[key] !== expected[key]) {
+        throw new Error(`Update UI state wrong at "${label}": expected ${key}=${JSON.stringify(expected[key])}, got ${JSON.stringify(actual[key])} (full: ${JSON.stringify(actual)})`);
+      }
+    }
+  };
+  smokeAutoUpdater.emit('update-available', { version: '9.9.9' });
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  await assertUpdateUi('available', { downloadHidden: false, installHidden: true });
+  await mainWindow.webContents.executeJavaScript("checkUpdatesButton.scrollIntoView({ block: 'center' })");
+  await captureScreenshot('09e-update-available.png');
+  smokeAutoUpdater.emit('download-progress', { percent: 42 });
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  await assertUpdateUi('downloading', { downloadHidden: false, installHidden: true });
+  await captureScreenshot('09f-update-downloading.png');
+  smokeAutoUpdater.emit('update-downloaded', { version: '9.9.9' });
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  await assertUpdateUi('downloaded', { downloadHidden: true, installHidden: false });
+  await captureScreenshot('09g-update-downloaded.png');
   // Appearance: click through each color scheme and the light/dark toggle for real, and confirm the
   // choice actually round-trips through localStorage (not just that the swatch looks selected) --
   // this is what theme.js reads on the next launch to avoid a flash of the wrong theme.
@@ -836,6 +870,18 @@ app.whenReady().then(async () => {
       console.error('Manual update check failed:', error);
       return { ok: false, error: 'update_check_failed', message: error?.message };
     }
+  });
+  ipcMain.handle('download-update', async () => {
+    try {
+      await downloadUpdate();
+      return { ok: true };
+    } catch (error) {
+      console.error('Update download failed:', error);
+      return { ok: false, error: 'update_download_failed', message: error?.message };
+    }
+  });
+  ipcMain.handle('quit-and-install-update', () => {
+    quitAndInstallUpdate();
   });
 
   // Never in smoke mode (no network activity during a capture run) or an unpackaged dev run (checks

@@ -465,6 +465,7 @@ h1 { margin: 0; font-size: clamp(48px, 6vw, 78px); font-weight: 700; line-height
 .camera-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
 
 .edit-form-actions { display: flex; align-items: center; gap: 16px; }
+.update-actions { display: flex; align-items: center; gap: 10px; }
 .danger-text-button { color: var(--danger); }
 .danger-text-button:hover { color: color-mix(in srgb, var(--danger) 70%, white); }
 
