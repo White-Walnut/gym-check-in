@@ -47,7 +47,7 @@
       "provider": "github",
       "owner": "White-Walnut",
       "repo": "gym-check-in",
-      "draft": false
+      "releaseType": "release"
     }
   }
 }
