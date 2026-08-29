@@ -194,6 +194,30 @@ function errorText(code, fallback = 'operation_failed') {
   return window.i18n.t(currentLang, `errors.${ERROR_CODES.has(code) ? code : fallback}`);
 }
 
+// main.js auto-locks the staff session after 5 minutes (STAFF_SESSION_MS) regardless of what this
+// window still thinks -- every mutating IPC call gated by its assertUnlocked() can fail with
+// 'not_authorized' as a result, at any point, on any form. Previously that just showed "please
+// unlock again" as inline status text and left staff staring at a form that would silently reject
+// every further action -- this actually puts the PIN screen back up, which is what that message
+// promises. Call this instead of setStatus(..., errorText(error), 'error') for any error that came
+// from an assertUnlocked()-gated call (i.e. everywhere except the PIN-entry/recovery forms
+// themselves, which use their own not-gated endpoints and handle their own errors in place).
+function handleUnauthorized() {
+  staffSessionActive = false;
+  showStaffLock();
+  setStatus(staffLockStatus, errorText('not_authorized'), 'error');
+}
+
+// Shorthand for the common "show this IPC error, redirecting to the PIN screen instead if the
+// session expired" pattern described above.
+function showError(statusElement, error, fallback) {
+  if (error === 'not_authorized') {
+    handleUnauthorized();
+    return;
+  }
+  setStatus(statusElement, errorText(error, fallback), 'error');
+}
+
 // Centralises every date/time display so it follows the selected app language rather than the OS's
 // own locale -- passing `undefined` to toLocaleDateString() etc. would use the system locale
 // instead, which could silently mismatch a staff member's chosen in-app language.
@@ -600,7 +624,7 @@ async function runMemberSearch() {
   const query = memberSearch.value.trim();
   const response = await window.gym.searchMembers(query);
   if (!response.ok) {
-    setStatus(renewStatus, errorText(response.error), 'error');
+    showError(renewStatus, response.error);
     return;
   }
   setStatus(renewStatus, '');
@@ -652,7 +676,7 @@ async function runHistorySearch(reset) {
     offset: historyOffset
   });
   if (!response.ok) {
-    setStatus(historyStatus, errorText(response.error), 'error');
+    showError(historyStatus, response.error);
     return;
   }
   const rows = response.data;
@@ -696,7 +720,7 @@ historyExportButton.addEventListener('click', async () => {
   } else if (result.error === 'cancelled') {
     setStatus(historyStatus, '');
   } else {
-    setStatus(historyStatus, errorText(result.error), 'error');
+    showError(historyStatus, result.error);
   }
 });
 
@@ -869,7 +893,7 @@ async function renewMember(memberId, renewalType, clickedButton) {
   const response = await window.gym.renewMember({ memberId, renewalType, amountCents });
   buttons.forEach((button) => { button.disabled = false; });
   if (!response.ok) {
-    setStatus(renewStatus, errorText(response.error), 'error');
+    showError(renewStatus, response.error);
     return;
   }
   const change = renewalType === 'monthly'
@@ -961,7 +985,7 @@ cancelPhotoChoiceButton.addEventListener('click', hidePhotoSourceChoice);
 
 async function applyMemberPhotoResponse(response) {
   if (!response.ok) {
-    setStatus(editMemberStatus, errorText(response.error), 'error');
+    showError(editMemberStatus, response.error);
     return;
   }
   editMemberPhoto.src = await window.gym.getPhotoUrl(response.data.photoPath) || fallbackAvatar('?');
@@ -1054,7 +1078,7 @@ cameraUseButton.addEventListener('click', async () => {
   const response = await window.gym.captureMemberPhoto({ memberId, dataUrl: capturedPhotoDataUrl });
   cameraUseButton.disabled = false;
   if (!response.ok) {
-    setStatus(cameraStatus, errorText(response.error), 'error');
+    showError(cameraStatus, response.error);
     return;
   }
   closeCameraModal();
@@ -1067,7 +1091,7 @@ removePhotoButton.addEventListener('click', async () => {
   const response = await window.gym.removeMemberPhoto({ memberId });
   removePhotoButton.disabled = false;
   if (!response.ok) {
-    setStatus(editMemberStatus, errorText(response.error), 'error');
+    showError(editMemberStatus, response.error);
     return;
   }
   editMemberPhoto.src = fallbackAvatar('?');
@@ -1081,7 +1105,7 @@ exportMemberDataButton.addEventListener('click', async () => {
   const response = await window.gym.exportMemberData({ memberId });
   exportMemberDataButton.disabled = false;
   if (!response.ok) {
-    if (response.error !== 'cancelled') setStatus(editMemberStatus, errorText(response.error), 'error');
+    if (response.error !== 'cancelled') showError(editMemberStatus, response.error);
     return;
   }
   setStatus(editMemberStatus, window.i18n.t(currentLang, 'edit.dataExported', { path: response.data.path }), 'success');
@@ -1096,7 +1120,7 @@ deleteMemberButton.addEventListener('click', async () => {
   const response = await window.gym.deleteMember({ memberId });
   deleteMemberButton.disabled = false;
   if (!response.ok) {
-    setStatus(editMemberStatus, errorText(response.error), 'error');
+    showError(editMemberStatus, response.error);
     return;
   }
   closeMemberEditor();
@@ -1108,7 +1132,7 @@ showExpiringButton.addEventListener('click', async () => {
   const withinDays = Number(expiringDaysInput.value) || 7;
   const response = await window.gym.expiringMembers(withinDays);
   if (!response.ok) {
-    setStatus(renewStatus, errorText(response.error), 'error');
+    showError(renewStatus, response.error);
     return;
   }
   memberSearch.value = '';
@@ -1153,7 +1177,7 @@ addMemberForm.addEventListener('submit', async (event) => {
   });
   submitButton.disabled = false;
   if (!response.ok) {
-    setStatus(addMemberStatus, errorText(response.error), 'error');
+    showError(addMemberStatus, response.error);
     return;
   }
   setStatus(addMemberStatus, window.i18n.t(currentLang, 'addMember.savedSuccess', { name: response.data.name }), 'success');
@@ -1184,7 +1208,7 @@ editMemberForm.addEventListener('submit', async (event) => {
   });
   submitButton.disabled = false;
   if (!response.ok) {
-    setStatus(editMemberStatus, errorText(response.error), 'error');
+    showError(editMemberStatus, response.error);
     return;
   }
   setStatus(editMemberStatus, window.i18n.t(currentLang, 'renew.updatedSuccess', { name: response.data.name }), 'success');
@@ -1281,7 +1305,7 @@ regenerateRecoveryButton.addEventListener('click', async () => {
   const response = await window.gym.regenerateRecoveryCode({ currentPin });
   regenerateRecoveryButton.disabled = false;
   if (!response.ok) {
-    setStatus(changePinStatus, errorText(response.error), 'error');
+    showError(changePinStatus, response.error);
     return;
   }
   window.alert(window.i18n.t(currentLang, 'settings.pin.newRecoveryCodeAlert', { code: response.data.recoveryCode }));
@@ -1315,6 +1339,7 @@ kioskLockdownToggle.addEventListener('change', async () => {
   kioskLockdownToggle.disabled = false;
   if (!response.ok) {
     kioskLockdownToggle.checked = !desired; // revert on failure
+    if (response.error === 'not_authorized') handleUnauthorized();
   }
 });
 
@@ -1325,6 +1350,7 @@ dualScreenToggle.addEventListener('change', async () => {
   dualScreenToggle.disabled = false;
   if (!response.ok) {
     dualScreenToggle.checked = !desired; // revert on failure
+    if (response.error === 'not_authorized') handleUnauthorized();
   }
 });
 
@@ -1399,7 +1425,10 @@ async function setLanguage(lang) {
   updateClock();
   renderActivityFeed();
   const response = await window.gym.setLanguage(lang);
-  if (!response.ok) console.error('Could not save the language choice -- it will reset next launch:', response.error);
+  if (!response.ok) {
+    if (response.error === 'not_authorized') handleUnauthorized();
+    else console.error('Could not save the language choice -- it will reset next launch:', response.error);
+  }
 }
 
 languageChoiceButtons.forEach((button) => {
@@ -1413,7 +1442,7 @@ saveRetentionButton.addEventListener('click', async () => {
   const response = await window.gym.setCheckinRetentionDays(Number(retentionDaysInput.value));
   saveRetentionButton.disabled = false;
   if (!response.ok) {
-    setStatus(retentionStatus, errorText(response.error), 'error');
+    showError(retentionStatus, response.error);
     return;
   }
   setStatus(retentionStatus, window.i18n.t(currentLang, 'settings.retention.saved'), 'success');
@@ -1424,7 +1453,8 @@ exportBackupButton.addEventListener('click', async () => {
   const response = await window.gym.exportBackup();
   exportBackupButton.disabled = false;
   if (!response.ok) {
-    if (response.error !== 'cancelled') setStatus(backupStatus, window.i18n.t(currentLang, 'settings.backup.failed'), 'error');
+    if (response.error === 'not_authorized') handleUnauthorized();
+    else if (response.error !== 'cancelled') setStatus(backupStatus, window.i18n.t(currentLang, 'settings.backup.failed'), 'error');
     return;
   }
   setStatus(backupStatus, window.i18n.t(currentLang, 'settings.backup.savedSuccess', { path: response.data.path }), 'success');

@@ -521,6 +521,23 @@ async function runSmokeCapture() {
     "document.querySelector('[data-language-choice=\"en\"]').click()"
   );
   await new Promise((resolve) => setTimeout(resolve, 300));
+  // Session expiry: main.js's own 5-minute staff-session timer (STAFF_SESSION_MS) can lock the
+  // server side at any moment the renderer isn't watching for it -- simulate that exact race by
+  // calling lock-staff directly (bypassing the renderer's own closeAdmin/staffSessionActive path
+  // entirely, same as a real silent timeout would) while the dashboard still thinks it's unlocked,
+  // then trigger any assertUnlocked()-gated action. Previously this just showed "please unlock
+  // again" as inline text and left the dashboard sitting there, still unlocked, doing nothing --
+  // confirm it now actually puts the PIN screen back up.
+  await mainWindow.webContents.executeJavaScript("window.gym.lockStaff()");
+  await mainWindow.webContents.executeJavaScript("saveRetentionButton.click()");
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  const relockedAfterExpiry = await mainWindow.webContents.executeJavaScript("!staffLockView.hidden && adminContent.hidden");
+  if (!relockedAfterExpiry) {
+    throw new Error('A session-expiry (not_authorized) response did not put the PIN screen back up as expected');
+  }
+  await captureScreenshot('09i-session-expired-relock.png');
+  await mainWindow.webContents.executeJavaScript("staffLockPinInput.value = '1234'; staffLockEnterForm.requestSubmit();");
+  await new Promise((resolve) => setTimeout(resolve, 500));
   // The Lock button replaces the old "close admin" X now that the dashboard is a permanent page --
   // verify the full round trip for real: click it, confirm the PIN screen reappears (not a blank/
   // hidden page), then unlock again and confirm the dashboard returns to the same tab.

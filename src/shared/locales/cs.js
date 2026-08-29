@@ -52,7 +52,7 @@ const cs = {
   },
 
   admin: {
-    kicker: 'OBLAST PERSONÁLU',
+    kicker: 'PRO PERSONÁL',
     title: 'Správa členů',
     lockAriaLabel: 'Uzamknout a vrátit se na obrazovku PIN',
     lockTitle: 'Uzamknout',
@@ -203,20 +203,20 @@ const cs = {
   settings: {
     appearance: {
       heading: 'Vzhled',
-      hint: 'Uloženo v tomto počítači, není třeba nastavovat znovu při dalším spuštění.',
+      hint: 'Toto nastavení se uloží a příště ho už nastavovat nemusíte.',
       dark: 'Tmavý',
       light: 'Světlý',
       lightModeAriaLabel: 'Světlý režim',
       themes: {
-        slate: { name: 'Slate', subtitle: 'Onyx a elektrická modrá' },
-        zinc: { name: 'Zinc', subtitle: 'Antracit a teplý jantar' },
-        emerald: { name: 'Emerald', subtitle: 'Hluboká zeleň a mátová' },
-        indigo: { name: 'Indigo', subtitle: 'Půlnoční a laserová fialová' }
+        slate: { name: 'Slate', subtitle: 'Tmavě modrá a modrý akcent' },
+        zinc: { name: 'Zinc', subtitle: 'Tmavě šedá a oranžový akcent' },
+        emerald: { name: 'Emerald', subtitle: 'Tmavě zelená a zelený akcent' },
+        indigo: { name: 'Indigo', subtitle: 'Tmavě fialová a fialový akcent' }
       }
     },
     language: {
       heading: 'Jazyk',
-      hint: 'Projeví se ihned, pouze v tomto počítači.',
+      hint: 'Změna se projeví okamžitě, jen v tomto počítači.',
       english: 'English',
       czech: 'Čeština'
     },
@@ -241,14 +241,12 @@ const cs = {
     },
     kiosk: {
       heading: 'Kioskový režim',
-      hintHtml: 'Zobrazí obrazovku pro příchody na celou obrazovku a zablokuje Alt+F4 a tlačítko '
-        + 'zavřít, takže člen u recepce ji nemůže náhodně zavřít nebo minimalizovat. Jde o '
-        + 'odrazující opatření, ne o úplné uzamčení &mdash; klávesa Windows, Ctrl+Alt+Delete a '
-        + 'Správce úloh fungují nadále a jsou mimo kontrolu jakékoli aplikace. Vypnutí odtud vždy '
-        + 'funguje, protože pro vstup na tuto obrazovku byl již potřeba PIN personálu. '
-        + '<strong>Projeví se pouze, pokud je zapnutý i režim dvou obrazovek níže</strong> '
-        + '&mdash; jinak neexistuje obrazovka pro zákazníky, takže to nemá vliv na váš vlastní '
-        + 'přehled personálu.',
+      hintHtml: 'Zobrazí zákaznickou obrazovku přes celou obrazovku a zablokuje Alt+F4 i tlačítko '
+        + 'zavřít, aby ji člen u recepce omylem nezavřel nebo neminimalizoval. Nejde o úplné '
+        + 'uzamčení počítače &mdash; klávesa Windows, Ctrl+Alt+Delete a Správce úloh fungují dál. '
+        + 'Vypnout to můžete odsud vždy. '
+        + '<strong>Projeví se jen společně se zapnutým režimem dvou obrazovek níže</strong> '
+        + '&mdash; bez druhé, zákaznické obrazovky toto nastavení nic neovlivní.',
       enable: 'Povolit kioskový režim'
     },
     dualScreen: {
@@ -269,8 +267,9 @@ const cs = {
     },
     updates: {
       heading: 'Aktualizace',
-      hint: 'Automaticky kontroluje jednou denně a nikdy nic nestáhne ani nenainstaluje bez vašeho '
-        + 'potvrzení zde. Použijte tlačítko níže kdykoli pro okamžitou kontrolu.',
+      hint: 'Kontrola aktualizací probíhá automaticky jednou denně. Nic se nestáhne ani '
+        + 'nenainstaluje bez vašeho potvrzení. Tlačítkem níže si aktualizaci můžete kdykoli '
+        + 'vyžádat i ručně.',
       check: 'Zkontrolovat aktualizace',
       download: 'Stáhnout aktualizaci',
       install: 'Restartovat a nainstalovat',
