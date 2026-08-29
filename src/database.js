@@ -19,6 +19,7 @@ const {
   generateRecoveryCode,
   normaliseRecoveryCode
 } = require('./shared/pin');
+const { SUPPORTED_LANGUAGES } = require('./shared/i18n');
 
 // Stable, extraction-path-independent references to the bundled demo photos. Resolved to an actual
 // file:// URL by main.js's `photo-url` handler using *that run's* __dirname, so they never go stale
@@ -419,6 +420,24 @@ class GymDatabase {
       INSERT INTO app_meta (key, value) VALUES ('dual_screen_enabled', ?)
       ON CONFLICT(key) DO UPDATE SET value = excluded.value
     `).run(enabled ? '1' : '0');
+  }
+
+  // --- Language ----------------------------------------------------------------------------------
+  // The UI language, not a per-window display preference like the theme (which lives in localStorage
+  // instead) -- the main process needs it too, for the OS check-in notification and native dialog
+  // titles, so it has to be readable from here rather than only from the renderer's own storage.
+
+  getLanguage() {
+    const value = this.db.prepare("SELECT value FROM app_meta WHERE key = 'language'").get()?.value;
+    return SUPPORTED_LANGUAGES.includes(value) ? value : 'en';
+  }
+
+  setLanguage(language) {
+    if (!SUPPORTED_LANGUAGES.includes(language)) throw new Error('invalid_language');
+    this.db.prepare(`
+      INSERT INTO app_meta (key, value) VALUES ('language', ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    `).run(language);
   }
 
   // --- Updates -----------------------------------------------------------------------------------

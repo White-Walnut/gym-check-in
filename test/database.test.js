@@ -463,6 +463,17 @@ test('dual-screen defaults off and persists once set', () => {
   database.close();
 });
 
+test('language defaults to English, persists once set, and rejects an unsupported code', () => {
+  const database = new GymDatabase(':memory:');
+  assert.equal(database.getLanguage(), 'en');
+  database.setLanguage('cs');
+  assert.equal(database.getLanguage(), 'cs');
+  database.setLanguage('en');
+  assert.equal(database.getLanguage(), 'en');
+  assert.throws(() => database.setLanguage('fr'), /invalid_language/);
+  database.close();
+});
+
 test('kiosk lockdown defaults off and persists once set', () => {
   const database = new GymDatabase(':memory:');
   assert.equal(database.getKioskLockdown(), false);

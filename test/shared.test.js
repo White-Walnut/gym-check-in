@@ -15,6 +15,9 @@ const { membershipEndDate } = require('../src/shared/dates');
 const { checkinNotificationCopy } = require('../src/shared/checkin-notification');
 const { csvField, toCsv } = require('../src/shared/csv');
 const { parseCapturedPhotoDataUrl } = require('../src/shared/photo-capture');
+const { SUPPORTED_LANGUAGES, resolveLang, t, plural } = require('../src/shared/i18n');
+const en = require('../src/shared/locales/en');
+const cs = require('../src/shared/locales/cs');
 
 // --- Secret hashing (staff PIN + recovery code) ---------------------------------------------
 
@@ -256,4 +259,52 @@ test('toCsv writes a header row and one row per entry, in header order', () => {
   assert.equal(lines[0], 'Name,Card UID');
   assert.equal(lines[1], 'Jordan Lee,10000001');
   assert.equal(lines[2], '"Doe, Jane",10000002');
+});
+
+// --- i18n (translation lookup, pluralization, and every locale's key set) --------------------
+
+// Flattens a locale object down to a sorted list of dot-paths pointing at leaf values (strings, or
+// plural-form objects treated as one leaf each) -- used below to catch any key present in one
+// language's file but not the other, which would otherwise only surface as a silent
+// falls-back-to-English at runtime.
+function leafKeys(node, prefix = '') {
+  const isPluralForms = node && typeof node === 'object'
+    && ['one', 'few', 'many', 'other'].some((form) => form in node);
+  if (typeof node !== 'object' || node === null || isPluralForms) return [prefix];
+  return Object.keys(node).flatMap((key) => leafKeys(node[key], prefix ? `${prefix}.${key}` : key));
+}
+
+test('every locale supports exactly the same set of keys as English', () => {
+  const englishKeys = leafKeys(en).sort();
+  for (const lang of SUPPORTED_LANGUAGES) {
+    if (lang === 'en') continue;
+    const locale = lang === 'cs' ? cs : null;
+    assert.ok(locale, `no locale module wired up in this test for "${lang}"`);
+    assert.deepEqual(leafKeys(locale).sort(), englishKeys, `${lang}.js's key set has drifted from en.js`);
+  }
+});
+
+test('resolveLang falls back to English for an unsupported or missing language', () => {
+  assert.equal(resolveLang('cs'), 'cs');
+  assert.equal(resolveLang('en'), 'en');
+  assert.equal(resolveLang('fr'), 'en');
+  assert.equal(resolveLang(undefined), 'en');
+});
+
+test('t() interpolates placeholders and falls back to English for a language missing the key', () => {
+  assert.equal(t('en', 'renew.jumpedToCard', { uid: 'ABC123' }), 'Jumped to card ABC123.');
+  assert.equal(t('cs', 'renew.jumpedToCard', { uid: 'ABC123' }), 'Přechod na kartu ABC123.');
+  // A key that exists in neither language returns the raw key -- visibly wrong, not a blank string.
+  assert.equal(t('en', 'nonexistent.key.here'), 'nonexistent.key.here');
+});
+
+test('plural() picks the correct English (one/other) and Czech (one/few/other) form', () => {
+  assert.equal(plural('en', 'common.passUnit', 1), 'pass');
+  assert.equal(plural('en', 'common.passUnit', 2), 'passes');
+  assert.equal(plural('en', 'common.passUnit', 0), 'passes');
+  assert.equal(plural('cs', 'common.passUnit', 1), 'vstup');
+  assert.equal(plural('cs', 'common.passUnit', 2), 'vstupy');
+  assert.equal(plural('cs', 'common.passUnit', 4), 'vstupy');
+  assert.equal(plural('cs', 'common.passUnit', 5), 'vstupů');
+  assert.equal(plural('cs', 'common.passUnit', 0), 'vstupů');
 });

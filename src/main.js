@@ -8,6 +8,7 @@ const { resolvePhotoPath, isContainedIn, isAllowedImageExtension } = require('./
 const { checkinNotificationCopy } = require('./shared/checkin-notification');
 const { toCsv } = require('./shared/csv');
 const { parseCapturedPhotoDataUrl } = require('./shared/photo-capture');
+const { t } = require('./shared/i18n');
 const {
   wireUpdater,
   checkForUpdatesManually,
@@ -93,7 +94,7 @@ function playCheckInChime(allowed) {
 function notifyCheckIn(result) {
   playCheckInChime(Boolean(result.allowed));
   if (!Notification.isSupported()) return;
-  const { title, body } = checkinNotificationCopy(result);
+  const { title, body } = checkinNotificationCopy(result, currentLanguage);
   new Notification({ title, body, silent: true }).show();
 }
 
@@ -150,6 +151,12 @@ let kioskWindowIsCustomerFacing = false;
 // Read once at startup; changing it in Settings takes effect on the next launch rather than trying
 // to tear down and rebuild live windows while the app is running.
 let dualScreenEnabled = false;
+
+// The app-wide UI language -- read at startup and kept current on every 'set-language' call, same
+// pattern as kioskLockdownEnabled/dualScreenEnabled above. Unlike those two, this takes effect
+// immediately: every read of this variable below (the check-in notification, dialog titles, CSV
+// headers) happens fresh at call time, not once at startup, so a language switch needs no restart.
+let currentLanguage = 'en';
 
 function windowOptions(extra = {}) {
   return {
@@ -497,6 +504,23 @@ async function runSmokeCapture() {
     "document.querySelector('[data-theme-choice=\"slate\"]').click();"
   );
   await new Promise((resolve) => setTimeout(resolve, 300));
+  // Language: switch to Czech live (no restart) and confirm the static UI actually re-rendered in
+  // Czech, not just that the button looks selected -- this is the one live-translation path that
+  // isn't covered by the unit tests in test/shared.test.js, which only check the lookup logic in
+  // isolation, never a real DOM.
+  await mainWindow.webContents.executeJavaScript(
+    "document.querySelector('[data-language-choice=\"cs\"]').click()"
+  );
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  const czechHeading = await mainWindow.webContents.executeJavaScript("document.querySelector('#admin-title').textContent");
+  if (czechHeading !== 'Správa členů') {
+    throw new Error(`Language switch to Czech did not take effect -- #admin-title read "${czechHeading}"`);
+  }
+  await captureScreenshot('09h-settings-czech.png');
+  await mainWindow.webContents.executeJavaScript(
+    "document.querySelector('[data-language-choice=\"en\"]').click()"
+  );
+  await new Promise((resolve) => setTimeout(resolve, 300));
   // The Lock button replaces the old "close admin" X now that the dashboard is a permanent page --
   // verify the full round trip for real: click it, confirm the PIN screen reappears (not a blank/
   // hidden page), then unlock again and confirm the dashboard returns to the same tab.
@@ -560,6 +584,7 @@ app.whenReady().then(async () => {
   gymDatabase.seedDemoMembers();
   kioskLockdownEnabled = gymDatabase.getKioskLockdown();
   dualScreenEnabled = gymDatabase.getDualScreenEnabled();
+  currentLanguage = gymDatabase.getLanguage();
 
   // GDPR storage-limitation: prune check-ins past the configured retention window on every launch.
   // Cheap at this dataset size and means nobody has to remember to do it by hand.
@@ -608,18 +633,18 @@ app.whenReady().then(async () => {
     const rows = gymDatabase.searchCheckIns({ ...filters, limit: CSV_EXPORT_CAP, offset: 0 });
     const csv = toCsv(
       [
-        { key: 'checkedInAt', label: 'Checked in at' },
-        { key: 'name', label: 'Name' },
-        { key: 'uid', label: 'Card UID' },
-        { key: 'outcome', label: 'Outcome' },
-        { key: 'reason', label: 'Reason' }
+        { key: 'checkedInAt', label: t(currentLanguage, 'main.csv.checkedInAt') },
+        { key: 'name', label: t(currentLanguage, 'main.csv.name') },
+        { key: 'uid', label: t(currentLanguage, 'main.csv.cardUid') },
+        { key: 'outcome', label: t(currentLanguage, 'main.csv.outcome') },
+        { key: 'reason', label: t(currentLanguage, 'main.csv.reason') }
       ],
-      rows.map((row) => ({ ...row, outcome: row.allowed ? 'Approved' : 'Denied' }))
+      rows.map((row) => ({ ...row, outcome: t(currentLanguage, row.allowed ? 'common.approved' : 'common.denied') }))
     );
     const target = await dialog.showSaveDialog(staffFacingWindow(), {
-      title: 'Export check-in history',
+      title: t(currentLanguage, 'main.dialogs.exportHistoryTitle'),
       defaultPath: `gym-checkin-history-${localDateString()}.csv`,
-      filters: [{ name: 'CSV', extensions: ['csv'] }]
+      filters: [{ name: t(currentLanguage, 'main.dialogs.csvFilterName'), extensions: ['csv'] }]
     });
     if (target.canceled || !target.filePath) return { ok: false, error: 'cancelled' };
     try {
@@ -723,9 +748,9 @@ app.whenReady().then(async () => {
   ipcMain.handle('choose-member-photo', async () => {
     if (!staffUnlocked) return { ok: false, error: 'not_authorized' };
     const result = await dialog.showOpenDialog(staffFacingWindow(), {
-      title: 'Choose a member photo',
+      title: t(currentLanguage, 'main.dialogs.choosePhotoTitle'),
       properties: ['openFile'],
-      filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp'] }]
+      filters: [{ name: t(currentLanguage, 'main.dialogs.imagesFilterName'), extensions: ['jpg', 'jpeg', 'png', 'webp'] }]
     });
     if (result.canceled || !result.filePaths.length) return { ok: false, error: 'cancelled' };
     return { ok: true, data: { path: result.filePaths[0] } };
@@ -787,6 +812,13 @@ app.whenReady().then(async () => {
     if (kioskWindowIsCustomerFacing && kioskWindow && !kioskWindow.isDestroyed()) kioskWindow.setKiosk(value);
   }));
 
+  ipcMain.handle('get-language', () => currentLanguage);
+  ipcMain.handle('set-language', (_event, language) => adminResult(() => {
+    assertUnlocked();
+    gymDatabase.setLanguage(language);
+    currentLanguage = language;
+  }));
+
   ipcMain.handle('get-dual-screen-enabled', () => dualScreenEnabled);
   ipcMain.handle('set-dual-screen-enabled', (_event, enabled) => adminResult(() => {
     assertUnlocked();
@@ -810,9 +842,9 @@ app.whenReady().then(async () => {
       return { ok: false, error: publicErrors.has(error.message) ? error.message : 'operation_failed' };
     }
     const target = await dialog.showSaveDialog(staffFacingWindow(), {
-      title: 'Export member data',
+      title: t(currentLanguage, 'main.dialogs.exportMemberDataTitle'),
       defaultPath: `${data.member.name.replace(/[^a-z0-9]+/gi, '-')}-data-export.json`,
-      filters: [{ name: 'JSON', extensions: ['json'] }]
+      filters: [{ name: t(currentLanguage, 'main.dialogs.jsonFilterName'), extensions: ['json'] }]
     });
     if (target.canceled || !target.filePath) return { ok: false, error: 'cancelled' };
     try {
@@ -828,9 +860,9 @@ app.whenReady().then(async () => {
     if (!staffUnlocked) return { ok: false, error: 'not_authorized' };
     if (databasePath === ':memory:') return { ok: false, error: 'operation_failed' };
     const target = await dialog.showSaveDialog(staffFacingWindow(), {
-      title: 'Export database backup',
+      title: t(currentLanguage, 'main.dialogs.exportBackupTitle'),
       defaultPath: `gym-checkin-backup-${localDateString()}.sqlite`,
-      filters: [{ name: 'SQLite database', extensions: ['sqlite'] }]
+      filters: [{ name: t(currentLanguage, 'main.dialogs.sqliteFilterName'), extensions: ['sqlite'] }]
     });
     if (target.canceled || !target.filePath) return { ok: false, error: 'cancelled' };
     try {
@@ -848,7 +880,7 @@ app.whenReady().then(async () => {
       if (event.sender.id === kioskWindow.webContents.id) windowRole = 'kiosk';
       else if (event.sender.id === staffWindow.webContents.id) windowRole = 'staff';
     }
-    return { databasePath, smoke: Boolean(smokeDirectory), windowRole };
+    return { databasePath, smoke: Boolean(smokeDirectory), windowRole, language: currentLanguage };
   });
 
   ipcMain.handle('photo-url', (_event, photoPath) => {

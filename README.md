@@ -272,6 +272,21 @@ files there) with full Czech diacritic support (ěščřžáíéůú); card UIDs
 **JetBrains Mono** for a sharper, more precise read. Both are self-hosted specifically so nothing
 about this app's offline operation changes -- no fonts are ever fetched over a network.
 
+## Language
+
+**Settings** has a **Language** panel: English or Čeština (Czech), switching the entire interface --
+including the OS check-in notification and native dialog titles -- immediately, with no restart.
+Unlike the theme above, this is stored in the shared database (not `localStorage`), since the main
+process needs to know it too, not just the page.
+
+Adding a third language: create `src/shared/locales/<code>.js` covering the same keys as
+`src/shared/locales/en.js` (the canonical key list, with every key's meaning documented in that
+file's own header comment), add its code to `SUPPORTED_LANGUAGES` in `src/shared/i18n.js`, add a
+`<script src="../shared/locales/<code>.js">` tag next to the existing two in `index.html`, and add a
+language-switch button in the Settings markup. A `test/shared.test.js` check fails the build if a
+locale's key set ever drifts from English's. See `src/shared/i18n.js` for the lookup/pluralization
+logic itself, which has no strings of its own and never needs a translator's attention.
+
 ## Data retention (GDPR)
 
 **Settings** has a **Delete check-ins older than [N] days** field (default 730 days / ~24 months).

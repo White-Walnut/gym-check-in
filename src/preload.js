@@ -31,6 +31,9 @@ contextBridge.exposeInMainWorld('gym', {
   lockStaff: () => ipcRenderer.invoke('lock-staff'),
   exportBackup: () => ipcRenderer.invoke('export-backup'),
 
+  getLanguage: () => ipcRenderer.invoke('get-language'),
+  setLanguage: (language) => ipcRenderer.invoke('set-language', language),
+
   getKioskLockdown: () => ipcRenderer.invoke('get-kiosk-lockdown'),
   setKioskLockdown: (enabled) => ipcRenderer.invoke('set-kiosk-lockdown', enabled),
   getDualScreenEnabled: () => ipcRenderer.invoke('get-dual-screen-enabled'),

@@ -9,6 +9,14 @@
          no flash of the fallback theme -- see theme.js's own comment for why this must run first. -->
     <script src="theme.js"></script>
     <link rel="stylesheet" href="styles.css" />
+    <!-- Locale data, then the lookup/plural/applyTranslations logic that uses it -- loaded here
+         (not through preload/contextBridge, which can't require() local files under sandbox: true;
+         see ../shared/dates.js's own comment) so renderer.js can call window.i18n as soon as it
+         knows which language to apply. Order matters: each locale file just assigns itself onto
+         window.GYM_LOCALES, so both must load before i18n.js reads that object. -->
+    <script src="../shared/locales/en.js"></script>
+    <script src="../shared/locales/cs.js"></script>
+    <script src="../shared/i18n.js"></script>
   </head>
   <body class="state-idle">
     <div class="ambient ambient-one"></div>
@@ -24,14 +32,14 @@
           </span>
           <div>
             <strong>GYM CHECK-IN</strong>
-            <span>Member access</span>
+            <span data-i18n="topbar.brandSubtitle">Member access</span>
           </div>
         </div>
         <div class="topbar-right">
-          <button id="admin-toggle" class="admin-toggle" type="button" aria-label="Open member management" title="Member management (Tab)">
+          <button id="admin-toggle" class="admin-toggle" type="button" data-i18n-aria-label="topbar.adminToggleAriaLabel" aria-label="Open member management" data-i18n-title="topbar.adminToggleTitle" title="Member management (Tab)">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm-7 17c.5-4 3-6 7-6s6.5 2 7 6H5Zm14-9v-2h2v2h2v2h-2v2h-2v-2h-2v-2h2Z"/></svg>
           </button>
-          <div class="reader-status"><i></i> Reader ready</div>
+          <div class="reader-status"><i></i> <span data-i18n="topbar.readerReady">Reader ready</span></div>
           <time id="clock">--:--</time>
         </div>
       </header>
@@ -43,9 +51,9 @@
               <svg viewBox="0 0 64 64"><path d="M18 33c0-8 6-14 14-14m-20 14c0-11 9-20 20-20m-26 20C6 19 18 7 32 7m14 26c0-8-6-14-14-14m20 14c0-11-9-20-20-20m26 20C58 19 46 7 32 7"/><rect x="25" y="28" width="14" height="24" rx="3"/></svg>
             </div>
           </div>
-          <p class="eyebrow">READY FOR CHECK-IN</p>
-          <h1>Tap your member card</h1>
-          <p class="subhead">Hold the card near the reader. Approval appears instantly.</p>
+          <p class="eyebrow" data-i18n="idle.eyebrow">READY FOR CHECK-IN</p>
+          <h1 data-i18n="idle.heading">Tap your member card</h1>
+          <p class="subhead" data-i18n="idle.subhead">Hold the card near the reader. Approval appears instantly.</p>
         </div>
 
         <div id="result-view" class="view result-view" hidden>
@@ -58,19 +66,19 @@
           <h1 id="member-name"></h1>
           <p class="result-message" id="result-message"></p>
           <div class="membership-pill" id="membership-pill"></div>
-          <button id="assign-card-button" class="assign-card-button" type="button" hidden>Assign to new member</button>
+          <button id="assign-card-button" class="assign-card-button" type="button" hidden data-i18n="result.assignCardButton">Assign to new member</button>
           <div class="reset-track"><span id="reset-progress"></span></div>
         </div>
       </section>
 
       <footer class="footer">
-        <button id="test-toggle" class="test-toggle" type="button">Test a card</button>
+        <button id="test-toggle" class="test-toggle" type="button" data-i18n="footer.testCardToggle">Test a card</button>
         <form id="test-form" class="test-form" hidden>
-          <label for="test-uid">Card UID</label>
-          <input id="test-uid" autocomplete="off" placeholder="Try 10000001" />
-          <button type="submit">Check in</button>
+          <label for="test-uid" data-i18n="footer.cardUidLabel">Card UID</label>
+          <input id="test-uid" autocomplete="off" data-i18n-placeholder="footer.cardUidPlaceholder" placeholder="Try 10000001" />
+          <button type="submit" data-i18n="footer.checkInSubmit">Check in</button>
         </form>
-        <p id="scan-hint">Waiting for card <span>•</span> Tab member management <span>•</span> F11 full screen</p>
+        <p id="scan-hint" data-i18n-html="footer.scanHintHtml">Waiting for card <span>•</span> Tab member management <span>•</span> F11 full screen</p>
       </footer>
     </main>
 
@@ -79,18 +87,18 @@
       <section class="admin-panel" role="dialog" aria-modal="true" aria-labelledby="admin-title">
         <header id="admin-header" class="admin-header">
           <div>
-            <p class="admin-kicker">STAFF AREA</p>
-            <h2 id="admin-title">Member management</h2>
+            <p class="admin-kicker" data-i18n="admin.kicker">STAFF AREA</p>
+            <h2 id="admin-title" data-i18n="admin.title">Member management</h2>
           </div>
           <div class="admin-header-actions">
-            <button id="dashboard-test-toggle" class="text-button" type="button">Test a card</button>
+            <button id="dashboard-test-toggle" class="text-button" type="button" data-i18n="footer.testCardToggle">Test a card</button>
             <form id="dashboard-test-form" class="dashboard-test-form" hidden>
-              <input id="dashboard-test-uid" autocomplete="off" placeholder="Try 10000001" />
-              <button class="renew-button" type="submit">Check in</button>
+              <input id="dashboard-test-uid" autocomplete="off" data-i18n-placeholder="footer.cardUidPlaceholder" placeholder="Try 10000001" />
+              <button class="renew-button" type="submit" data-i18n="footer.checkInSubmit">Check in</button>
             </form>
-            <button id="admin-close" class="admin-close lock-button" type="button" aria-label="Lock and return to the PIN screen" title="Lock">
+            <button id="admin-close" class="admin-close lock-button" type="button" data-i18n-aria-label="admin.lockAriaLabel" aria-label="Lock and return to the PIN screen" data-i18n-title="admin.lockTitle" title="Lock">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5Zm-3 8V7a3 3 0 1 1 6 0v3H9Zm3 4a2 2 0 0 1 1 3.73V19a1 1 0 1 1-2 0v-1.27A2 2 0 0 1 12 14Z"/></svg>
-              <span>Lock</span>
+              <span data-i18n="admin.lockLabel">Lock</span>
             </button>
           </div>
         </header>
@@ -101,35 +109,35 @@
             <svg viewBox="0 0 24 24"><path d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5Zm-3 8V7a3 3 0 1 1 6 0v3H9Zm3 4a2 2 0 0 1 1 3.73V19a1 1 0 1 1-2 0v-1.27A2 2 0 0 1 12 14Z"/></svg>
           </div>
           <form id="staff-lock-enter-form" class="staff-lock-form" hidden>
-            <h3>Enter staff PIN</h3>
-            <input id="staff-lock-pin" type="password" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="PIN" />
-            <button class="primary-button" type="submit">Unlock</button>
-            <button id="staff-lock-forgot-button" class="text-button" type="button">Forgot PIN?</button>
+            <h3 data-i18n="staffLock.enter.heading">Enter staff PIN</h3>
+            <input id="staff-lock-pin" type="password" inputmode="numeric" autocomplete="off" maxlength="8" data-i18n-placeholder="staffLock.enter.pinPlaceholder" placeholder="PIN" />
+            <button class="primary-button" type="submit" data-i18n="staffLock.enter.submit">Unlock</button>
+            <button id="staff-lock-forgot-button" class="text-button" type="button" data-i18n="staffLock.enter.forgot">Forgot PIN?</button>
           </form>
           <form id="staff-lock-setup-form" class="staff-lock-form" hidden>
-            <h3>Set a staff PIN</h3>
-            <p class="staff-lock-hint">Choose a 4-8 digit PIN. Reception staff will use it to open member management.</p>
-            <input id="staff-lock-new-pin" type="password" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="New PIN" />
-            <input id="staff-lock-confirm-pin" type="password" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="Confirm PIN" />
-            <button class="primary-button" type="submit">Set PIN</button>
+            <h3 data-i18n="staffLock.setup.heading">Set a staff PIN</h3>
+            <p class="staff-lock-hint" data-i18n="staffLock.setup.hint">Choose a 4-8 digit PIN. Reception staff will use it to open member management.</p>
+            <input id="staff-lock-new-pin" type="password" inputmode="numeric" autocomplete="off" maxlength="8" data-i18n-placeholder="staffLock.setup.newPinPlaceholder" placeholder="New PIN" />
+            <input id="staff-lock-confirm-pin" type="password" inputmode="numeric" autocomplete="off" maxlength="8" data-i18n-placeholder="staffLock.setup.confirmPinPlaceholder" placeholder="Confirm PIN" />
+            <button class="primary-button" type="submit" data-i18n="staffLock.setup.submit">Set PIN</button>
           </form>
           <form id="staff-lock-recover-form" class="staff-lock-form" hidden>
-            <h3>Reset PIN with recovery code</h3>
-            <p class="staff-lock-hint">Enter the recovery code shown when the PIN was last set.</p>
-            <input id="staff-lock-recovery-code" class="uppercase-input" autocomplete="off" placeholder="XXXXX-XXXXX" />
-            <input id="staff-lock-recovery-new-pin" type="password" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="New PIN" />
-            <input id="staff-lock-recovery-confirm-pin" type="password" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="Confirm new PIN" />
-            <button class="primary-button" type="submit">Reset PIN</button>
-            <button id="staff-lock-recover-cancel" class="text-button" type="button">Back to PIN entry</button>
+            <h3 data-i18n="staffLock.recover.heading">Reset PIN with recovery code</h3>
+            <p class="staff-lock-hint" data-i18n="staffLock.recover.hint">Enter the recovery code shown when the PIN was last set.</p>
+            <input id="staff-lock-recovery-code" class="uppercase-input" autocomplete="off" data-i18n-placeholder="staffLock.recover.codePlaceholder" placeholder="XXXXX-XXXXX" />
+            <input id="staff-lock-recovery-new-pin" type="password" inputmode="numeric" autocomplete="off" maxlength="8" data-i18n-placeholder="staffLock.recover.newPinPlaceholder" placeholder="New PIN" />
+            <input id="staff-lock-recovery-confirm-pin" type="password" inputmode="numeric" autocomplete="off" maxlength="8" data-i18n-placeholder="staffLock.recover.confirmPinPlaceholder" placeholder="Confirm new PIN" />
+            <button class="primary-button" type="submit" data-i18n="staffLock.recover.submit">Reset PIN</button>
+            <button id="staff-lock-recover-cancel" class="text-button" type="button" data-i18n="staffLock.recover.cancel">Back to PIN entry</button>
           </form>
           <div id="staff-lock-recovery-reveal" class="staff-lock-form" hidden>
-            <h3>Your recovery code</h3>
-            <p class="staff-lock-hint">
+            <h3 data-i18n="staffLock.reveal.heading">Your recovery code</h3>
+            <p class="staff-lock-hint" data-i18n="staffLock.reveal.hint">
               Write this down and keep it somewhere safe. It's the only way back in if the staff PIN
               is forgotten, and it won't be shown again.
             </p>
             <output id="staff-lock-recovery-code-display" class="recovery-code-display"></output>
-            <button id="staff-lock-recovery-continue" class="primary-button" type="button">I've saved it, continue</button>
+            <button id="staff-lock-recovery-continue" class="primary-button" type="button" data-i18n="staffLock.reveal.continueButton">I've saved it, continue</button>
           </div>
           <p id="staff-lock-status" class="form-status" role="status"></p>
         </div>
@@ -138,206 +146,215 @@
           <div class="admin-body">
           <div class="admin-main">
           <nav class="admin-tabs" aria-label="Member management sections">
-            <button class="admin-tab is-active" type="button" data-admin-tab="add">Add new member</button>
-            <button class="admin-tab" type="button" data-admin-tab="renew">Renew or prolong</button>
-            <button class="admin-tab" type="button" data-admin-tab="history">Check-in history</button>
-            <button class="admin-tab" type="button" data-admin-tab="settings">Settings</button>
+            <button class="admin-tab is-active" type="button" data-admin-tab="add" data-i18n="admin.tabs.add">Add new member</button>
+            <button class="admin-tab" type="button" data-admin-tab="renew" data-i18n="admin.tabs.renew">Renew or prolong</button>
+            <button class="admin-tab" type="button" data-admin-tab="history" data-i18n="admin.tabs.history">Check-in history</button>
+            <button class="admin-tab" type="button" data-admin-tab="settings" data-i18n="admin.tabs.settings">Settings</button>
           </nav>
 
           <div id="admin-add" class="admin-section">
             <div id="card-capture" class="card-capture">
               <span class="capture-dot"></span>
-              <div><strong>Tap an unassigned card</strong><small>The UID will appear here automatically.</small></div>
-              <output id="captured-uid">Waiting for card…</output>
-              <button id="scan-different-card" class="text-button" type="button" hidden>Scan a different card</button>
+              <div><strong data-i18n="addMember.cardCaptureHint">Tap an unassigned card</strong><small data-i18n="addMember.cardCaptureSubhint">The UID will appear here automatically.</small></div>
+              <output id="captured-uid" data-i18n="addMember.cardCaptureWaiting">Waiting for card…</output>
+              <button id="scan-different-card" class="text-button" type="button" hidden data-i18n="addMember.scanDifferentCard">Scan a different card</button>
             </div>
 
             <form id="add-member-form" class="admin-form">
               <input id="member-card-uid" name="cardUid" type="hidden" />
               <div class="field-grid">
-                <label>First name<input id="first-name" name="firstName" maxlength="80" autocomplete="off" required /></label>
-                <label>Last name<input id="last-name" name="lastName" maxlength="80" autocomplete="off" required /></label>
+                <label><span data-i18n="addMember.firstName">First name</span><input id="first-name" name="firstName" maxlength="80" autocomplete="off" required /></label>
+                <label><span data-i18n="addMember.lastName">Last name</span><input id="last-name" name="lastName" maxlength="80" autocomplete="off" required /></label>
               </div>
 
               <fieldset class="membership-choice">
-                <legend>Membership</legend>
-                <label class="choice-card"><input type="radio" name="membershipType" value="monthly" checked /><span><strong>Monthly</strong><small>Access until a fixed date</small></span></label>
-                <label class="choice-card"><input type="radio" name="membershipType" value="punchcard" /><span><strong>Punch card</strong><small>One pass used per entry</small></span></label>
+                <legend data-i18n="addMember.membershipLegend">Membership</legend>
+                <label class="choice-card"><input type="radio" name="membershipType" value="monthly" checked /><span><strong data-i18n="addMember.monthlyTitle">Monthly</strong><small data-i18n="addMember.monthlyHint">Access until a fixed date</small></span></label>
+                <label class="choice-card"><input type="radio" name="membershipType" value="punchcard" /><span><strong data-i18n="addMember.punchcardTitle">Punch card</strong><small data-i18n="addMember.punchcardHint">One pass used per entry</small></span></label>
               </fieldset>
 
               <div id="monthly-fields" class="plan-fields">
-                <label>Valid until<input id="valid-until" name="validUntil" type="date" required /></label>
+                <label><span data-i18n="addMember.validUntil">Valid until</span><input id="valid-until" name="validUntil" type="date" required /></label>
               </div>
               <div id="punchcard-fields" class="plan-fields" hidden>
-                <label>Starting passes<input id="passes-remaining" name="passesRemaining" type="number" min="1" max="1000" value="10" /></label>
+                <label><span data-i18n="addMember.startingPasses">Starting passes</span><input id="passes-remaining" name="passesRemaining" type="number" min="1" max="1000" value="10" /></label>
               </div>
 
               <label class="plan-fields">
-                <span class="field-label-row">Amount paid (Kč) <span class="optional-hint">optional</span></span>
-                <input id="add-amount-paid" name="amountPaid" type="number" min="0" step="0.01" placeholder="e.g. 500" />
+                <span class="field-label-row"><span data-i18n="addMember.amountPaid">Amount paid (Kč)</span> <span class="optional-hint" data-i18n="addMember.optionalHint">optional</span></span>
+                <input id="add-amount-paid" name="amountPaid" type="number" min="0" step="0.01" data-i18n-placeholder="addMember.amountPlaceholder" placeholder="e.g. 500" />
               </label>
 
               <div class="form-footer">
                 <p id="add-member-status" class="form-status" role="status"></p>
-                <button class="primary-button" type="submit">Save member</button>
+                <button class="primary-button" type="submit" data-i18n="addMember.save">Save member</button>
               </div>
             </form>
           </div>
 
           <div id="admin-renew" class="admin-section" hidden>
             <label class="search-field">
-              <span>Find by member name or card UID</span>
+              <span data-i18n="renew.searchLabel">Find by member name or card UID</span>
               <div class="search-field-row">
-                <input id="member-search" autocomplete="off" placeholder="Start typing…" />
-                <button id="scan-to-find-button" class="text-button" type="button">Scan to find</button>
+                <input id="member-search" autocomplete="off" data-i18n-placeholder="renew.searchPlaceholder" placeholder="Start typing…" />
+                <button id="scan-to-find-button" class="text-button" type="button" data-i18n="renew.scanToFind">Scan to find</button>
               </div>
             </label>
 
             <div class="expiring-row">
-              <span>Expiring within</span>
+              <span data-i18n="renew.expiringWithin">Expiring within</span>
               <input id="expiring-days" type="number" min="1" max="90" value="7" />
-              <span>days</span>
-              <button id="show-expiring-button" class="text-button" type="button">Show</button>
-              <button id="clear-expiring-button" class="text-button" type="button" hidden>Show all members</button>
+              <span data-i18n="renew.days">days</span>
+              <button id="show-expiring-button" class="text-button" type="button" data-i18n="renew.show">Show</button>
+              <button id="clear-expiring-button" class="text-button" type="button" hidden data-i18n="renew.showAll">Show all members</button>
             </div>
 
             <form id="edit-member-form" class="edit-member-form" hidden>
               <div class="edit-form-header">
-                <div><p class="admin-kicker">EDIT MEMBER</p><h3 id="edit-member-title">Member details</h3></div>
-                <button id="edit-member-cancel" class="text-button" type="button">Cancel</button>
+                <div><p class="admin-kicker" data-i18n="edit.kicker">EDIT MEMBER</p><h3 id="edit-member-title" data-i18n="edit.titleDefault">Member details</h3></div>
+                <button id="edit-member-cancel" class="text-button" type="button" data-i18n="edit.cancel">Cancel</button>
               </div>
               <input id="edit-member-id" type="hidden" />
 
               <div class="edit-photo-row">
                 <img id="edit-member-photo" alt="Member photo" />
                 <div class="edit-photo-actions">
-                  <button id="change-photo-toggle" class="text-button" type="button">Change photo…</button>
+                  <button id="change-photo-toggle" class="text-button" type="button" data-i18n="edit.changePhoto">Change photo…</button>
                   <div id="change-photo-choice" class="photo-source-choice" hidden>
-                    <button id="take-photo-button" class="text-button" type="button">Take photo</button>
-                    <button id="choose-photo-file-button" class="text-button" type="button">Choose file…</button>
-                    <button id="cancel-photo-choice-button" class="text-button" type="button">Cancel</button>
+                    <button id="take-photo-button" class="text-button" type="button" data-i18n="edit.takePhoto">Take photo</button>
+                    <button id="choose-photo-file-button" class="text-button" type="button" data-i18n="edit.chooseFile">Choose file…</button>
+                    <button id="cancel-photo-choice-button" class="text-button" type="button" data-i18n="edit.cancel">Cancel</button>
                   </div>
-                  <button id="remove-photo-button" class="text-button" type="button" hidden>Remove photo</button>
+                  <button id="remove-photo-button" class="text-button" type="button" hidden data-i18n="edit.removePhoto">Remove photo</button>
                 </div>
               </div>
 
               <div class="field-grid three-columns">
-                <label>First name<input id="edit-first-name" maxlength="80" required /></label>
-                <label>Last name<input id="edit-last-name" maxlength="80" required /></label>
-                <label>Card UID
+                <label><span data-i18n="edit.firstName">First name</span><input id="edit-first-name" maxlength="80" required /></label>
+                <label><span data-i18n="edit.lastName">Last name</span><input id="edit-last-name" maxlength="80" required /></label>
+                <label><span data-i18n="edit.cardUid">Card UID</span>
                   <div class="input-with-button">
                     <input id="edit-card-uid" maxlength="80" required />
-                    <button id="scan-replace-card-button" class="text-button" type="button">Scan to replace</button>
+                    <button id="scan-replace-card-button" class="text-button" type="button" data-i18n="edit.scanReplace">Scan to replace</button>
                   </div>
                 </label>
               </div>
               <div class="field-grid three-columns edit-plan-row">
-                <label>Status<select id="edit-membership-status"><option value="active">Active</option><option value="frozen">Frozen</option><option value="cancelled">Cancelled</option></select></label>
-                <label>Membership<select id="edit-membership-type"><option value="monthly">Monthly</option><option value="punchcard">Punch card</option></select></label>
-                <label id="edit-monthly-field">Custom end date<input id="edit-valid-until" type="date" /></label>
-                <label id="edit-punchcard-field" hidden>Entries remaining<input id="edit-passes-remaining" type="number" min="0" max="100000" /></label>
+                <label><span data-i18n="edit.status">Status</span><select id="edit-membership-status"><option value="active" data-i18n="edit.statusActive">Active</option><option value="frozen" data-i18n="edit.statusFrozen">Frozen</option><option value="cancelled" data-i18n="edit.statusCancelled">Cancelled</option></select></label>
+                <label><span data-i18n="edit.membership">Membership</span><select id="edit-membership-type"><option value="monthly" data-i18n="edit.membershipMonthly">Monthly</option><option value="punchcard" data-i18n="edit.membershipPunchcard">Punch card</option></select></label>
+                <label id="edit-monthly-field"><span data-i18n="edit.customEndDate">Custom end date</span><input id="edit-valid-until" type="date" /></label>
+                <label id="edit-punchcard-field" hidden><span data-i18n="edit.entriesRemaining">Entries remaining</span><input id="edit-passes-remaining" type="number" min="0" max="100000" /></label>
               </div>
               <label class="amount-paid-field">
-                <span class="field-label-row">Amount paid this visit (Kč) <span class="optional-hint">optional</span></span>
-                <input id="edit-amount-paid" type="number" min="0" step="0.01" placeholder="e.g. 500" />
+                <span class="field-label-row"><span data-i18n="edit.amountPaid">Amount paid this visit (Kč)</span> <span class="optional-hint" data-i18n="addMember.optionalHint">optional</span></span>
+                <input id="edit-amount-paid" type="number" min="0" step="0.01" data-i18n-placeholder="addMember.amountPlaceholder" placeholder="e.g. 500" />
               </label>
               <div class="form-footer compact-footer">
                 <p id="edit-member-status" class="form-status" role="status"></p>
                 <div class="edit-form-actions">
-                  <button id="export-member-data-button" class="text-button" type="button">Export data…</button>
-                  <button id="delete-member-button" class="text-button danger-text-button" type="button">Delete member…</button>
-                  <button class="primary-button" type="submit">Save changes</button>
+                  <button id="export-member-data-button" class="text-button" type="button" data-i18n="edit.exportData">Export data…</button>
+                  <button id="delete-member-button" class="text-button danger-text-button" type="button" data-i18n="edit.deleteMember">Delete member…</button>
+                  <button class="primary-button" type="submit" data-i18n="edit.saveChanges">Save changes</button>
                 </div>
               </div>
             </form>
 
-            <div class="member-list-heading"><strong>Members</strong><span id="member-count"></span></div>
+            <div class="member-list-heading"><strong data-i18n="renew.membersHeading">Members</strong><span id="member-count"></span></div>
             <div id="search-results" class="search-results">
-              <div class="empty-search">Loading members…</div>
+              <div class="empty-search" data-i18n="renew.loadingMembers">Loading members…</div>
             </div>
             <p id="renew-status" class="form-status" role="status"></p>
           </div>
 
           <div id="admin-history" class="admin-section" hidden>
             <div class="history-filters">
-              <label>Name or card UID<input id="history-query" autocomplete="off" placeholder="Search…" /></label>
-              <label>From<input id="history-from-date" type="date" /></label>
-              <label>To<input id="history-to-date" type="date" /></label>
-              <button id="history-filter-button" class="renew-button" type="button">Filter</button>
-              <button id="history-clear-button" class="text-button" type="button">Clear</button>
+              <label><span data-i18n="history.nameOrUid">Name or card UID</span><input id="history-query" autocomplete="off" data-i18n-placeholder="history.searchPlaceholder" placeholder="Search…" /></label>
+              <label><span data-i18n="history.from">From</span><input id="history-from-date" type="date" /></label>
+              <label><span data-i18n="history.to">To</span><input id="history-to-date" type="date" /></label>
+              <button id="history-filter-button" class="renew-button" type="button" data-i18n="history.filter">Filter</button>
+              <button id="history-clear-button" class="text-button" type="button" data-i18n="history.clear">Clear</button>
             </div>
 
-            <div class="member-list-heading"><strong>Check-ins</strong><span id="history-count"></span></div>
+            <div class="member-list-heading"><strong data-i18n="history.heading">Check-ins</strong><span id="history-count"></span></div>
             <div id="history-results" class="search-results">
-              <div class="empty-search">Loading check-ins…</div>
+              <div class="empty-search" data-i18n="history.loadingCheckIns">Loading check-ins…</div>
             </div>
             <div class="history-actions">
-              <button id="history-load-more-button" class="text-button" type="button" hidden>Load more</button>
-              <button id="history-export-button" class="text-button" type="button">Export CSV…</button>
+              <button id="history-load-more-button" class="text-button" type="button" hidden data-i18n="history.loadMore">Load more</button>
+              <button id="history-export-button" class="text-button" type="button" data-i18n="history.exportCsv">Export CSV…</button>
             </div>
             <p id="history-status" class="form-status" role="status"></p>
           </div>
 
           <div id="admin-settings" class="admin-section" hidden>
             <div class="settings-block">
-              <h3>Appearance</h3>
-              <p class="settings-hint">
+              <h3 data-i18n="settings.appearance.heading">Appearance</h3>
+              <p class="settings-hint" data-i18n="settings.appearance.hint">
                 Saved on this PC, so it doesn't need setting again next launch.
               </p>
               <div class="appearance-mode-row">
-                <span>Dark</span>
+                <span data-i18n="settings.appearance.dark">Dark</span>
                 <label class="mode-switch">
-                  <input id="appearance-mode-toggle" type="checkbox" aria-label="Light mode" />
+                  <input id="appearance-mode-toggle" type="checkbox" data-i18n-aria-label="settings.appearance.lightModeAriaLabel" aria-label="Light mode" />
                   <span class="mode-switch-track"></span>
                 </label>
-                <span>Light</span>
+                <span data-i18n="settings.appearance.light">Light</span>
               </div>
               <div id="theme-swatch-grid" class="theme-swatch-grid" role="radiogroup" aria-label="Color scheme">
                 <button class="theme-swatch" type="button" data-theme-choice="slate" role="radio" aria-checked="false">
                   <span class="theme-swatch-preview" aria-hidden="true"><span class="swatch-dot swatch-dot-bg"></span><span class="swatch-dot swatch-dot-accent"></span></span>
-                  <strong>Slate</strong>
-                  <small>Obsidian &amp; Electric Blue</small>
+                  <strong data-i18n="settings.appearance.themes.slate.name">Slate</strong>
+                  <small data-i18n="settings.appearance.themes.slate.subtitle">Obsidian &amp; Electric Blue</small>
                 </button>
                 <button class="theme-swatch" type="button" data-theme-choice="zinc" role="radio" aria-checked="false">
                   <span class="theme-swatch-preview" aria-hidden="true"><span class="swatch-dot swatch-dot-bg"></span><span class="swatch-dot swatch-dot-accent"></span></span>
-                  <strong>Zinc</strong>
-                  <small>Charcoal &amp; Warm Amber</small>
+                  <strong data-i18n="settings.appearance.themes.zinc.name">Zinc</strong>
+                  <small data-i18n="settings.appearance.themes.zinc.subtitle">Charcoal &amp; Warm Amber</small>
                 </button>
                 <button class="theme-swatch" type="button" data-theme-choice="emerald" role="radio" aria-checked="false">
                   <span class="theme-swatch-preview" aria-hidden="true"><span class="swatch-dot swatch-dot-bg"></span><span class="swatch-dot swatch-dot-accent"></span></span>
-                  <strong>Emerald</strong>
-                  <small>Deep Forest &amp; Mint</small>
+                  <strong data-i18n="settings.appearance.themes.emerald.name">Emerald</strong>
+                  <small data-i18n="settings.appearance.themes.emerald.subtitle">Deep Forest &amp; Mint</small>
                 </button>
                 <button class="theme-swatch" type="button" data-theme-choice="indigo" role="radio" aria-checked="false">
                   <span class="theme-swatch-preview" aria-hidden="true"><span class="swatch-dot swatch-dot-bg"></span><span class="swatch-dot swatch-dot-accent"></span></span>
-                  <strong>Indigo</strong>
-                  <small>Midnight &amp; Laser Violet</small>
+                  <strong data-i18n="settings.appearance.themes.indigo.name">Indigo</strong>
+                  <small data-i18n="settings.appearance.themes.indigo.subtitle">Midnight &amp; Laser Violet</small>
                 </button>
               </div>
             </div>
 
             <div class="settings-block">
-              <h3>Change staff PIN</h3>
-              <form id="change-pin-form" class="settings-form">
-                <input id="change-pin-current" type="password" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="Current PIN" required />
-                <input id="change-pin-new" type="password" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="New PIN" required />
-                <input id="change-pin-confirm" type="password" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="Confirm new PIN" required />
-                <button class="primary-button" type="submit">Update PIN</button>
-              </form>
-              <p id="change-pin-status" class="form-status" role="status"></p>
-              <button id="regenerate-recovery-button" class="text-button" type="button">Regenerate recovery code…</button>
+              <h3 data-i18n="settings.language.heading">Language</h3>
+              <p class="settings-hint" data-i18n="settings.language.hint">Applies right away, on this PC only.</p>
+              <div id="language-choice-row" class="language-choice-row" role="radiogroup" aria-label="Language">
+                <button class="language-choice" type="button" data-language-choice="en" role="radio" aria-checked="false" data-i18n="settings.language.english">English</button>
+                <button class="language-choice" type="button" data-language-choice="cs" role="radio" aria-checked="false" data-i18n="settings.language.czech">Čeština</button>
+              </div>
             </div>
 
             <div class="settings-block">
-              <h3>Backup</h3>
-              <p class="settings-hint">Save a copy of the member database to a location of your choice.</p>
-              <button id="export-backup-button" class="renew-button" type="button">Export backup…</button>
+              <h3 data-i18n="settings.pin.heading">Change staff PIN</h3>
+              <form id="change-pin-form" class="settings-form">
+                <input id="change-pin-current" type="password" inputmode="numeric" autocomplete="off" maxlength="8" data-i18n-placeholder="settings.pin.currentPlaceholder" placeholder="Current PIN" required />
+                <input id="change-pin-new" type="password" inputmode="numeric" autocomplete="off" maxlength="8" data-i18n-placeholder="settings.pin.newPlaceholder" placeholder="New PIN" required />
+                <input id="change-pin-confirm" type="password" inputmode="numeric" autocomplete="off" maxlength="8" data-i18n-placeholder="settings.pin.confirmPlaceholder" placeholder="Confirm new PIN" required />
+                <button class="primary-button" type="submit" data-i18n="settings.pin.submit">Update PIN</button>
+              </form>
+              <p id="change-pin-status" class="form-status" role="status"></p>
+              <button id="regenerate-recovery-button" class="text-button" type="button" data-i18n="settings.pin.regenerateRecovery">Regenerate recovery code…</button>
+            </div>
+
+            <div class="settings-block">
+              <h3 data-i18n="settings.backup.heading">Backup</h3>
+              <p class="settings-hint" data-i18n="settings.backup.hint">Save a copy of the member database to a location of your choice.</p>
+              <button id="export-backup-button" class="renew-button" type="button" data-i18n="settings.backup.exportButton">Export backup…</button>
               <p id="backup-status" class="form-status" role="status"></p>
             </div>
 
             <div class="settings-block">
-              <h3>Kiosk lockdown</h3>
-              <p class="settings-hint">
+              <h3 data-i18n="settings.kiosk.heading">Kiosk lockdown</h3>
+              <p class="settings-hint" data-i18n-html="settings.kiosk.hintHtml">
                 Makes the customer-facing check-in display fullscreen and blocks Alt+F4 and its
                 close button, so a member at the desk can't casually exit or minimize it. This is a
                 deterrent, not a full lockdown &mdash; the Windows key, Ctrl+Alt+Delete, and Task
@@ -349,45 +366,45 @@
               </p>
               <label class="toggle-row">
                 <input id="kiosk-lockdown-toggle" type="checkbox" />
-                <span>Enable kiosk lockdown</span>
+                <span data-i18n="settings.kiosk.enable">Enable kiosk lockdown</span>
               </label>
             </div>
 
             <div class="settings-block">
-              <h3>Two-screen mode</h3>
-              <p class="settings-hint">
+              <h3 data-i18n="settings.dualScreen.heading">Two-screen mode</h3>
+              <p class="settings-hint" data-i18n="settings.dualScreen.hint">
                 When two monitors are connected, use one purely for check-in results and the other
                 purely for staff (no more switching between them). Only takes effect the next time
                 the app starts, and only when a second display is actually detected.
               </p>
               <label class="toggle-row">
                 <input id="dual-screen-toggle" type="checkbox" />
-                <span>Use two screens when available</span>
+                <span data-i18n="settings.dualScreen.enable">Use two screens when available</span>
               </label>
             </div>
 
             <div class="settings-block">
-              <h3>Data retention</h3>
-              <p class="settings-hint">
+              <h3 data-i18n="settings.retention.heading">Data retention</h3>
+              <p class="settings-hint" data-i18n="settings.retention.hint">
                 Check-in records older than this are deleted automatically each time the app starts.
                 Member profiles and payment/renewal history are not affected by this setting.
               </p>
               <div class="expiring-row">
-                <span>Delete check-ins older than</span>
+                <span data-i18n="settings.retention.deleteOlderThan">Delete check-ins older than</span>
                 <input id="retention-days-input" type="number" min="1" max="3650" />
-                <span>days</span>
-                <button id="save-retention-button" class="text-button" type="button">Save</button>
+                <span data-i18n="settings.retention.days">days</span>
+                <button id="save-retention-button" class="text-button" type="button" data-i18n="settings.retention.save">Save</button>
               </div>
               <p id="retention-status" class="form-status" role="status"></p>
             </div>
 
             <div class="settings-block">
-              <h3>Updates</h3>
-              <p class="settings-hint">Checks automatically once a day, and never downloads or installs anything without you confirming it here first. Use the button below any time for an immediate check.</p>
+              <h3 data-i18n="settings.updates.heading">Updates</h3>
+              <p class="settings-hint" data-i18n="settings.updates.hint">Checks automatically once a day, and never downloads or installs anything without you confirming it here first. Use the button below any time for an immediate check.</p>
               <div class="update-actions">
-                <button id="check-updates-button" class="renew-button" type="button">Check for updates</button>
-                <button id="download-update-button" class="renew-button" type="button" hidden>Download update</button>
-                <button id="install-update-button" class="primary-button" type="button" hidden>Restart and install</button>
+                <button id="check-updates-button" class="renew-button" type="button" data-i18n="settings.updates.check">Check for updates</button>
+                <button id="download-update-button" class="renew-button" type="button" hidden data-i18n="settings.updates.download">Download update</button>
+                <button id="install-update-button" class="primary-button" type="button" hidden data-i18n="settings.updates.install">Restart and install</button>
               </div>
               <p id="update-status" class="form-status" role="status"></p>
             </div>
@@ -395,9 +412,9 @@
           </div>
 
           <aside id="activity-feed" class="activity-feed" aria-label="Recent check-ins">
-            <h3>Recent check-ins</h3>
+            <h3 data-i18n="activity.heading">Recent check-ins</h3>
             <div id="activity-feed-list" class="activity-feed-list">
-              <p class="activity-feed-empty">No check-ins yet.</p>
+              <p class="activity-feed-empty" data-i18n="activity.empty">No check-ins yet.</p>
             </div>
           </aside>
           </div>
@@ -408,7 +425,7 @@
 
     <div id="camera-modal" class="camera-modal" hidden>
       <section class="camera-panel" role="dialog" aria-modal="true" aria-labelledby="camera-title">
-        <h3 id="camera-title">Take a photo</h3>
+        <h3 id="camera-title" data-i18n="camera.title">Take a photo</h3>
         <div class="camera-frame">
           <video id="camera-video" autoplay playsinline muted></video>
           <img id="camera-preview" alt="Captured preview" hidden />
@@ -416,10 +433,10 @@
         <canvas id="camera-canvas" hidden></canvas>
         <p id="camera-status" class="form-status" role="status"></p>
         <div class="camera-actions">
-          <button id="camera-cancel-button" class="text-button" type="button">Cancel</button>
-          <button id="camera-retake-button" class="text-button" type="button" hidden>Retake</button>
-          <button id="camera-capture-button" class="primary-button" type="button">Capture</button>
-          <button id="camera-use-button" class="primary-button" type="button" hidden>Use this photo</button>
+          <button id="camera-cancel-button" class="text-button" type="button" data-i18n="camera.cancel">Cancel</button>
+          <button id="camera-retake-button" class="text-button" type="button" hidden data-i18n="camera.retake">Retake</button>
+          <button id="camera-capture-button" class="primary-button" type="button" data-i18n="camera.capture">Capture</button>
+          <button id="camera-use-button" class="primary-button" type="button" hidden data-i18n="camera.usePhoto">Use this photo</button>
         </div>
       </section>
     </div>
