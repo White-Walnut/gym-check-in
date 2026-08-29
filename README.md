@@ -308,9 +308,11 @@ for how to add a code-signing certificate later.
 
 ## Updates
 
-Auto-updates (via `electron-updater` and GitHub Releases) are wired into the app but **not enabled**
--- there's a "Check for updates" button in the staff area's Settings tab, but no automatic check runs
-anywhere. See [`UPDATER_SETUP.md`](UPDATER_SETUP.md) for the steps to finish setting this up.
+Auto-updates run via `electron-updater` and GitHub Releases. The app checks automatically once a
+day (on launch, at most once per 24 hours) and shows a Windows notification if a newer version is
+available -- it never downloads or installs anything without staff explicitly confirming in
+Settings. The "Check for updates" button there also triggers an immediate manual check any time. See
+[`RELEASING.md`](RELEASING.md) for how to actually publish a new version.
 
 ## Implementation notes
 
