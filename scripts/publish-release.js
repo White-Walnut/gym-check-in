@@ -15,8 +15,8 @@ const tag = `v${pkg.version}`;
 const distDir = path.join(__dirname, '..', 'dist');
 
 const expectedNames = [
-  `Gym Check-in Setup ${pkg.version}.exe`,
-  `Gym Check-in Setup ${pkg.version}.exe.blockmap`,
+  `Gym-Check-in-Setup-${pkg.version}.exe`,
+  `Gym-Check-in-Setup-${pkg.version}.exe.blockmap`,
   'latest.yml'
 ];
 const files = expectedNames.map((name) => path.join(distDir, name));

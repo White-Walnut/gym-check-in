@@ -26,6 +26,7 @@
   "build": {
     "appId": "local.gym.checkin",
     "productName": "Gym Check-in",
+    "artifactName": "Gym-Check-in-Setup-${version}.${ext}",
     "asar": true,
     "files": [
       "src/**/*",
