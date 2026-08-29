@@ -436,6 +436,11 @@ h1 { margin: 0; font-size: clamp(48px, 6vw, 78px); font-weight: 700; line-height
 .recovery-code-display { display: block; margin: 4px 0 4px; padding: 16px; border-radius: 10px; background: var(--bg-panel); color: var(--accent); font-family: 'JetBrains Mono', monospace; font-size: 28px; font-weight: 700; letter-spacing: .12em; text-align: center; }
 .uppercase-input { text-transform: uppercase; }
 
+/* The label text and "optional" hint need to be one single grid item (this wrapping span), not two
+   separate child nodes -- the parent label is `display: grid` (for the label-then-input stacking
+   every other form field uses), which would otherwise put "optional" on its own row below the label
+   text instead of inline beside it. */
+.field-label-row { display: inline-flex; align-items: baseline; gap: 6px; }
 .optional-hint { font-weight: 400; color: var(--text-muted); text-transform: none; letter-spacing: normal; }
 .amount-paid-field { display: grid; gap: 7px; margin-top: 16px; color: var(--text-muted); font-size: 12px; font-weight: 600; }
 .amount-paid-field input { width: 220px; min-height: 43px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 9px; outline: none; background: var(--bg-raised); color: var(--text-main); font: inherit; }
