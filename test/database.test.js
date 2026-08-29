@@ -473,6 +473,15 @@ test('kiosk lockdown defaults off and persists once set', () => {
   database.close();
 });
 
+test('last update check timestamp defaults to null and persists once set', () => {
+  const database = new GymDatabase(':memory:');
+  assert.equal(database.getLastUpdateCheckAt(), null);
+  const stamp = '2026-08-29T12:00:00.000Z';
+  database.setLastUpdateCheckAt(stamp);
+  assert.equal(database.getLastUpdateCheckAt(), stamp);
+  database.close();
+});
+
 test('PIN recovery: a code is minted on first setup, works once, and rotates after use', () => {
   const database = new GymDatabase(':memory:');
   const { recoveryCode } = database.setStaffPin('1234');

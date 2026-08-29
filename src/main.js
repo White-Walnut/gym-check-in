@@ -8,7 +8,7 @@ const { resolvePhotoPath, isContainedIn, isAllowedImageExtension } = require('./
 const { checkinNotificationCopy } = require('./shared/checkin-notification');
 const { toCsv } = require('./shared/csv');
 const { parseCapturedPhotoDataUrl } = require('./shared/photo-capture');
-const { wireUpdater, checkForUpdatesManually } = require('./updater');
+const { wireUpdater, checkForUpdatesManually, checkForUpdatesAutomatically } = require('./updater');
 
 // --- Windows ---------------------------------------------------------------------------------
 // Normally there's just one window doing double duty (kiosk display + admin-as-a-modal), same as
@@ -825,7 +825,8 @@ app.whenReady().then(async () => {
     return resolved ? pathToFileURL(resolved).href : null;
   });
 
-  // --- Updater: wired up, never checked automatically. See UPDATER_SETUP.md. ----------------------
+  // --- Updater: manual check always available; automatic check at most once a day. See
+  // UPDATER_SETUP.md for the one-time GitHub setup either path needs before a check can succeed. ---
   wireUpdater(() => staffFacingWindow());
   ipcMain.handle('check-for-updates', async () => {
     try {
@@ -836,6 +837,18 @@ app.whenReady().then(async () => {
       return { ok: false, error: 'update_check_failed', message: error?.message };
     }
   });
+
+  // Never in smoke mode (no network activity during a capture run) or an unpackaged dev run (checks
+  // against a real GitHub release don't make sense while iterating locally).
+  if (!smokeDirectory && app.isPackaged) {
+    const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+    const lastCheckAt = gymDatabase.getLastUpdateCheckAt();
+    const dueForCheck = !lastCheckAt || Date.now() - new Date(lastCheckAt).getTime() >= ONE_DAY_MS;
+    if (dueForCheck) {
+      gymDatabase.setLastUpdateCheckAt(new Date().toISOString());
+      checkForUpdatesAutomatically();
+    }
+  }
 
   await createWindows();
 

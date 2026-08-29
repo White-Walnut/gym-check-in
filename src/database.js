@@ -421,6 +421,23 @@ class GymDatabase {
     `).run(enabled ? '1' : '0');
   }
 
+  // --- Updates -----------------------------------------------------------------------------------
+  // Throttles the automatic background check (see checkForUpdatesAutomatically in main.js) to at
+  // most once a day, regardless of how often the app is launched -- a kiosk rebooted several times a
+  // day shouldn't hammer GitHub on every single launch. The manual "Check for updates" button always
+  // works regardless of this timestamp.
+
+  getLastUpdateCheckAt() {
+    return this.db.prepare("SELECT value FROM app_meta WHERE key = 'last_update_check_at'").get()?.value ?? null;
+  }
+
+  setLastUpdateCheckAt(isoTimestamp) {
+    this.db.prepare(`
+      INSERT INTO app_meta (key, value) VALUES ('last_update_check_at', ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    `).run(String(isoTimestamp));
+  }
+
   // --- Data retention (GDPR storage-limitation) -------------------------------------------------
   // Member erasure itself is handled by deleteMember() above; this is the other GDPR-relevant
   // piece -- check_ins accumulate forever otherwise. Defaults to a generous 24 months so nothing is
