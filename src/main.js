@@ -16,6 +16,7 @@ const {
   downloadUpdate,
   quitAndInstallUpdate
 } = require('./updater');
+const logger = require('./logger');
 
 // --- Windows ---------------------------------------------------------------------------------
 // Normally there's just one window doing double duty (kiosk display + admin-as-a-modal), same as
@@ -36,6 +37,25 @@ const smokeDirectory = smokeArgument ? smokeArgument.slice('--smoke-dir='.length
 const dualScreenSmoke = process.argv.includes('--dual-screen-smoke');
 const rendererErrors = [];
 
+// Smoke mode logs into the throwaway smoke directory instead of the real profile, same as
+// databasePath/photosDir above -- a CI/verification run should never touch or depend on real
+// machine state. app.getPath('userData') is safe to call this early (before 'ready'); only a
+// handful of other paths (like 'exe') actually require it.
+logger.init(smokeDirectory || app.getPath('userData'));
+
+// Registered at module scope (not inside whenReady) so they're live for the entire process
+// lifetime, including startup itself -- previously an error here had no handler at all, which for
+// uncaughtException means Node's default behavior (crash with a bare stack trace nobody at a gym
+// front desk would ever see or think to send anyone). Logged, then left to keep running rather than
+// force-quit: for a kiosk sitting at a reception desk, a app that logs a hiccup and stays usable is
+// far better than one that vanishes mid-shift over something that might not even be fatal.
+process.on('uncaughtException', (error) => {
+  logger.logError('process', 'Uncaught exception', error);
+});
+process.on('unhandledRejection', (reason) => {
+  logger.logError('process', 'Unhandled promise rejection', reason instanceof Error ? reason : new Error(String(reason)));
+});
+
 function staffFacingWindow() {
   return staffWindow || kioskWindow;
 }
@@ -55,7 +75,7 @@ function adminResult(work) {
   try {
     return { ok: true, data: work() };
   } catch (error) {
-    console.error('Admin operation failed:', error);
+    logger.logError('admin', 'Admin operation failed', error);
     return { ok: false, error: publicErrors.has(error.message) ? error.message : 'operation_failed' };
   }
 }
@@ -69,7 +89,7 @@ function deleteOwnedPhotoFile(photoPath) {
   try {
     fs.unlinkSync(resolved);
   } catch (error) {
-    console.error('Could not delete old photo file:', error);
+    logger.logError('photos', 'Could not delete old photo file', error);
   }
 }
 
@@ -187,18 +207,30 @@ function windowOptions(extra = {}) {
 
 function attachCommonWindowBehaviors(win, { isKioskDisplay }) {
   win.webContents.on('preload-error', (_event, preloadPath, error) => {
-    console.error('Preload script failed to load:', preloadPath, error);
+    logger.logError('window', `Preload script failed to load: ${preloadPath}`, error);
   });
-  // Smoke mode captures screenshots, not console output, so a broken script (e.g. a load-time
-  // SyntaxError from one of the shared <script> files) can silently fail a feature without ever
-  // showing up in a screenshot -- only a click that happens to hit the broken code path would
-  // reveal it. Recording renderer errors here and dumping them at the end of the run closes that
-  // gap without needing to click every feature.
-  if (smokeDirectory) {
-    win.webContents.on('console-message', (event) => {
-      if (event.level === 'error') rendererErrors.push(`${event.message} (${event.sourceId}:${event.lineNumber})`);
-    });
-  }
+  // Forwards every renderer-side console.error (including the window.onerror/unhandledrejection
+  // handlers wired up in renderer.js, which both just console.error the details) into the same
+  // persistent log as everything else -- previously a renderer-side failure had NO trace anywhere
+  // outside smoke mode, since DevTools isn't open on a real kiosk. Smoke mode additionally
+  // accumulates these into rendererErrors for its own end-of-run summary file (see below); that's
+  // additive, not a replacement for this always-on path.
+  win.webContents.on('console-message', (event) => {
+    if (event.level !== 'error') return;
+    logger.logError('renderer', `${event.message} (${event.sourceId}:${event.lineNumber})`);
+    if (smokeDirectory) rendererErrors.push(`${event.message} (${event.sourceId}:${event.lineNumber})`);
+  });
+  // A renderer crash (out-of-memory, a native module fault, etc.) has no JS handler that can catch
+  // it -- the page is just gone, with no console error and no uncaughtException. Left alone, a
+  // kiosk sitting at reception would show a blank/frozen window until someone physically noticed and
+  // restarted the app. Log it, then try one automatic reload -- a self-healed kiosk beats an unmanned
+  // desk with a dead screen and nobody around to see it, even if the underlying cause still needs a
+  // real fix. Never fires for a normal, expected exit ('clean-exit', e.g. on app quit).
+  win.webContents.on('render-process-gone', (_event, details) => {
+    if (details.reason === 'clean-exit') return;
+    logger.logError('window', `Renderer process gone (${details.reason}, exit code ${details.exitCode})`);
+    if (!win.isDestroyed() && !smokeDirectory) win.webContents.reload();
+  });
   if (isKioskDisplay) {
     win.on('close', (event) => {
       if (!smokeDirectory && kioskLockdownEnabled) event.preventDefault();
@@ -615,14 +647,15 @@ app.whenReady().then(async () => {
   try {
     gymDatabase = new GymDatabase(databasePath);
   } catch (error) {
-    console.error('Failed to open the member database:', error);
+    logger.logError('startup', 'Failed to open the member database', error);
     dialog.showErrorBox(
       'Gym Check-in could not start',
       'The member database could not be opened or upgraded, so the app cannot continue.\n\n'
       + `Details: ${error.message}\n\n`
       + `If a schema upgrade was in progress, a backup copy may have been saved next to:\n${databasePath}\n`
       + '(look for a file named "gym-checkin.pre-migration-<timestamp>.sqlite").\n\n'
-      + 'Please back up the database file and contact support before trying again.'
+      + `A log of this error was saved to:\n${logger.getLogFilePath()}\n\n`
+      + 'Please back up the database file, send that log file, and contact support before trying again.'
     );
     app.quit();
     return;
@@ -648,7 +681,7 @@ app.whenReady().then(async () => {
     try {
       result = gymDatabase.checkIn(uid);
     } catch (error) {
-      console.error('Check-in failed:', error);
+      logger.logError('checkin', 'Check-in failed', error);
       result = { allowed: false, reason: 'system_error', uid: normaliseUid(uid) };
     }
     // Dual-screen: a scan can be physically caught by either window depending on which one has OS
@@ -698,7 +731,7 @@ app.whenReady().then(async () => {
       fs.writeFileSync(target.filePath, csv);
       return { ok: true, data: { path: target.filePath, count: rows.length, truncated: rows.length >= CSV_EXPORT_CAP } };
     } catch (error) {
-      console.error('Check-in history export failed:', error);
+      logger.logError('export', 'Check-in history export failed', error);
       return { ok: false, error: 'operation_failed' };
     }
   });
@@ -885,7 +918,7 @@ app.whenReady().then(async () => {
     try {
       data = gymDatabase.exportMemberData(input?.memberId);
     } catch (error) {
-      console.error('Member data export failed:', error);
+      logger.logError('export', 'Member data export failed', error);
       return { ok: false, error: publicErrors.has(error.message) ? error.message : 'operation_failed' };
     }
     const target = await dialog.showSaveDialog(staffFacingWindow(), {
@@ -898,7 +931,7 @@ app.whenReady().then(async () => {
       fs.writeFileSync(target.filePath, JSON.stringify(data, null, 2));
       return { ok: true, data: { path: target.filePath } };
     } catch (error) {
-      console.error('Member data export write failed:', error);
+      logger.logError('export', 'Member data export write failed', error);
       return { ok: false, error: 'operation_failed' };
     }
   });
@@ -916,7 +949,29 @@ app.whenReady().then(async () => {
       fs.copyFileSync(databasePath, target.filePath);
       return { ok: true, data: { path: target.filePath } };
     } catch (error) {
-      console.error('Backup export failed:', error);
+      logger.logError('export', 'Backup export failed', error);
+      return { ok: false, error: 'operation_failed' };
+    }
+  });
+
+  // The point of the whole logger module (see src/logger.js) -- lets staff hand over a real record
+  // of what happened instead of describing it from memory. Gated the same way as every other export
+  // here, since a log can contain member names/UIDs from error messages, not just technical detail.
+  ipcMain.handle('export-log-file', async () => {
+    if (!staffUnlocked) return { ok: false, error: 'not_authorized' };
+    const logPath = logger.getLogFilePath();
+    if (!logPath || !fs.existsSync(logPath)) return { ok: false, error: 'no_log_yet' };
+    const target = await dialog.showSaveDialog(staffFacingWindow(), {
+      title: t(currentLanguage, 'main.dialogs.exportLogTitle'),
+      defaultPath: `gym-checkin-log-${localDateString()}.txt`,
+      filters: [{ name: t(currentLanguage, 'main.dialogs.textFilterName'), extensions: ['txt', 'log'] }]
+    });
+    if (target.canceled || !target.filePath) return { ok: false, error: 'cancelled' };
+    try {
+      fs.copyFileSync(logPath, target.filePath);
+      return { ok: true, data: { path: target.filePath } };
+    } catch (error) {
+      logger.logError('export', 'Log file export failed', error);
       return { ok: false, error: 'operation_failed' };
     }
   });
@@ -946,7 +1001,7 @@ app.whenReady().then(async () => {
       await checkForUpdatesManually();
       return { ok: true };
     } catch (error) {
-      console.error('Manual update check failed:', error);
+      logger.logError('updater', 'Manual update check failed', error);
       return { ok: false, error: 'update_check_failed', message: error?.message };
     }
   });
@@ -955,7 +1010,7 @@ app.whenReady().then(async () => {
       await downloadUpdate();
       return { ok: true };
     } catch (error) {
-      console.error('Update download failed:', error);
+      logger.logError('updater', 'Update download failed', error);
       return { ok: false, error: 'update_download_failed', message: error?.message };
     }
   });

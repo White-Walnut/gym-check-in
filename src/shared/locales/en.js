@@ -265,6 +265,14 @@ const en = {
       savedSuccess: 'Backup saved to {path}',
       failed: 'Backup could not be saved.'
     },
+    diagnostics: {
+      heading: 'Diagnostics',
+      hint: "If something goes wrong, this saves a record of what happened so it can actually be "
+        + "looked into -- it never leaves this PC on its own. Export it and send the file if you're "
+        + 'asked to.',
+      exportButton: 'Export log file…',
+      savedSuccess: 'Log file saved to {path}'
+    },
     kiosk: {
       heading: 'Kiosk lockdown',
       hintHtml: 'Makes the customer-facing check-in display fullscreen and blocks Alt+F4 and its '
@@ -387,7 +395,8 @@ const en = {
     invalid_amount: 'Enter a valid amount, or leave it blank.',
     invalid_photo: 'Choose a JPG, PNG, or WEBP image under 8MB.',
     invalid_retention_days: 'Enter a whole number of days, 1 or more.',
-    operation_failed: 'The change could not be saved. Try again.'
+    operation_failed: 'The change could not be saved. Try again.',
+    no_log_yet: "Nothing has been logged yet -- there's no file to export."
   },
 
   // Main-process-only strings: native dialog titles/filters and CSV export column headers. Kept in
@@ -398,10 +407,12 @@ const en = {
       exportHistoryTitle: 'Export check-in history',
       exportMemberDataTitle: 'Export member data',
       exportBackupTitle: 'Export database backup',
+      exportLogTitle: 'Export log file',
       choosePhotoTitle: 'Choose a member photo',
       csvFilterName: 'CSV',
       jsonFilterName: 'JSON',
       sqliteFilterName: 'SQLite database',
+      textFilterName: 'Text file',
       imagesFilterName: 'Images'
     },
     csv: {

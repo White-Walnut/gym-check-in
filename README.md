@@ -307,6 +307,19 @@ you.
 database to a location you choose. There's no in-app *restore* -- to restore a backup, close the app
 and replace `gym-checkin.sqlite` (see the path above) with the backup file, then relaunch.
 
+## Diagnostics
+
+The app keeps a running log at `gym-checkin.log` next to the database (same folder, see **Run it**
+above -- normally `%APPDATA%\gym-check-in\`), capturing every error it hits during normal use --
+check-in failures, export failures, uncaught exceptions, even a full renderer crash -- none of which
+show up anywhere otherwise, since nobody has DevTools open on a real kiosk. It's capped at 2MB and
+rotates itself (keeping the most recent ~512KB) rather than growing forever.
+
+**Settings** has an **Export log file...** button that saves a copy of it to a location you choose --
+the easiest way to get a record of what happened out of a real gym PC without walking someone
+through finding an AppData folder over the phone. If the app fails to start at all, the fatal error
+dialog names the log file's exact path directly.
+
 ## Build a Windows installer
 
 ```powershell

@@ -2,6 +2,18 @@ const IDLE_TIMEOUT_MS = 7000;
 const DUPLICATE_WINDOW_MS = 1500;
 const TOAST_VISIBLE_MS = 4000;
 
+// A renderer-side bug that isn't wrapped in its own try/catch previously vanished silently on a real
+// kiosk (no DevTools open in production) -- main.js's console-message listener already forwards
+// every console.error() from this page into the persistent log file (see src/logger.js), so routing
+// both of these through console.error is enough to get them there too, with no separate IPC call
+// needed. Registered first, before anything else in this file has a chance to throw.
+window.addEventListener('error', (event) => {
+  console.error('Uncaught error:', event.error || event.message);
+});
+window.addEventListener('unhandledrejection', (event) => {
+  console.error('Unhandled promise rejection:', event.reason);
+});
+
 const body = document.body;
 const idleView = document.querySelector('#idle-view');
 const resultView = document.querySelector('#result-view');
@@ -96,6 +108,8 @@ const changePinStatus = document.querySelector('#change-pin-status');
 const regenerateRecoveryButton = document.querySelector('#regenerate-recovery-button');
 const exportBackupButton = document.querySelector('#export-backup-button');
 const backupStatus = document.querySelector('#backup-status');
+const exportLogButton = document.querySelector('#export-log-button');
+const diagnosticsStatus = document.querySelector('#diagnostics-status');
 const checkUpdatesButton = document.querySelector('#check-updates-button');
 const downloadUpdateButton = document.querySelector('#download-update-button');
 const installUpdateButton = document.querySelector('#install-update-button');
@@ -181,7 +195,7 @@ const ERROR_CODES = new Set([
   'invalid_uid', 'invalid_name', 'invalid_membership_type', 'invalid_status', 'invalid_date',
   'invalid_passes', 'invalid_member', 'member_not_found', 'card_exists', 'not_authorized',
   'invalid_pin', 'wrong_pin', 'wrong_recovery_code', 'locked_out', 'invalid_amount',
-  'invalid_photo', 'invalid_retention_days', 'operation_failed'
+  'invalid_photo', 'invalid_retention_days', 'operation_failed', 'no_log_yet'
 ]);
 
 // Replaces the old static reasonCopy/errorCopy lookup objects -- both now resolve through
@@ -1544,6 +1558,17 @@ exportBackupButton.addEventListener('click', async () => {
     return;
   }
   setStatus(backupStatus, window.i18n.t(currentLang, 'settings.backup.savedSuccess', { path: response.data.path }), 'success');
+});
+
+exportLogButton.addEventListener('click', async () => {
+  exportLogButton.disabled = true;
+  const response = await window.gym.exportLogFile();
+  exportLogButton.disabled = false;
+  if (!response.ok) {
+    if (response.error !== 'cancelled') showError(diagnosticsStatus, response.error);
+    return;
+  }
+  setStatus(diagnosticsStatus, window.i18n.t(currentLang, 'settings.diagnostics.savedSuccess', { path: response.data.path }), 'success');
 });
 
 checkUpdatesButton.addEventListener('click', async () => {

@@ -261,6 +261,14 @@ const cs = {
       savedSuccess: 'Záloha uložena do {path}',
       failed: 'Zálohu se nepodařilo uložit.'
     },
+    diagnostics: {
+      heading: 'Diagnostika',
+      hint: 'Pokud něco selže, uloží se záznam o tom, co se stalo, aby to bylo možné skutečně '
+        + 'prošetřit -- z tohoto počítače se sám od sebe nikam neodesílá. Exportujte jej a soubor '
+        + 'pošlete, pokud o to budete požádáni.',
+      exportButton: 'Exportovat log…',
+      savedSuccess: 'Log uložen do {path}'
+    },
     kiosk: {
       heading: 'Kioskový režim',
       hintHtml: 'Zobrazí zákaznickou obrazovku přes celou obrazovku a zablokuje Alt+F4 i tlačítko '
@@ -381,7 +389,8 @@ const cs = {
     invalid_amount: 'Zadejte platnou částku, nebo pole ponechte prázdné.',
     invalid_photo: 'Vyberte obrázek JPG, PNG nebo WEBP do 8 MB.',
     invalid_retention_days: 'Zadejte celé číslo dní, 1 nebo více.',
-    operation_failed: 'Změnu se nepodařilo uložit. Zkuste to znovu.'
+    operation_failed: 'Změnu se nepodařilo uložit. Zkuste to znovu.',
+    no_log_yet: 'Zatím nebylo nic zaznamenáno -- není co exportovat.'
   },
 
   main: {
@@ -389,10 +398,12 @@ const cs = {
       exportHistoryTitle: 'Export historie příchodů',
       exportMemberDataTitle: 'Export dat člena',
       exportBackupTitle: 'Export zálohy databáze',
+      exportLogTitle: 'Export logu',
       choosePhotoTitle: 'Vybrat fotku člena',
       csvFilterName: 'CSV',
       jsonFilterName: 'JSON',
       sqliteFilterName: 'Databáze SQLite',
+      textFilterName: 'Textový soubor',
       imagesFilterName: 'Obrázky'
     },
     csv: {

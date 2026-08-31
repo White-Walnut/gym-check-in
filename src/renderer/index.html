@@ -369,6 +369,17 @@
             </div>
 
             <div class="settings-block">
+              <h3 data-i18n="settings.diagnostics.heading">Diagnostics</h3>
+              <p class="settings-hint" data-i18n="settings.diagnostics.hint">
+                If something goes wrong, this saves a record of what happened so it can actually be
+                looked into -- it never leaves this PC on its own. Export it and send the file if
+                you're asked to.
+              </p>
+              <button id="export-log-button" class="renew-button" type="button" data-i18n="settings.diagnostics.exportButton">Export log file…</button>
+              <p id="diagnostics-status" class="form-status" role="status"></p>
+            </div>
+
+            <div class="settings-block">
               <h3 data-i18n="settings.kiosk.heading">Kiosk lockdown</h3>
               <p class="settings-hint" data-i18n-html="settings.kiosk.hintHtml">
                 Makes the customer-facing check-in display fullscreen and blocks Alt+F4 and its

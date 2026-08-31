@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('gym', {
   regenerateRecoveryCode: (input) => ipcRenderer.invoke('regenerate-recovery-code', input),
   lockStaff: () => ipcRenderer.invoke('lock-staff'),
   exportBackup: () => ipcRenderer.invoke('export-backup'),
+  exportLogFile: () => ipcRenderer.invoke('export-log-file'),
 
   getLanguage: () => ipcRenderer.invoke('get-language'),
   setLanguage: (language) => ipcRenderer.invoke('set-language', language),
