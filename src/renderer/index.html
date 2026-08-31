@@ -47,13 +47,16 @@
       <section class="stage" aria-live="polite">
         <div id="idle-view" class="view idle-view">
           <div class="scan-orbit" aria-hidden="true">
-            <div class="scan-card">
+            <div id="scan-card-icon" class="scan-card">
               <svg viewBox="0 0 64 64"><path d="M18 33c0-8 6-14 14-14m-20 14c0-11 9-20 20-20m-26 20C6 19 18 7 32 7m14 26c0-8-6-14-14-14m20 14c0-11-9-20-20-20m26 20C58 19 46 7 32 7"/><rect x="25" y="28" width="14" height="24" rx="3"/></svg>
+            </div>
+            <div id="scan-barcode-icon" class="scan-card" hidden>
+              <svg viewBox="0 0 64 64"><path d="M10 16v32M17 16v32M23 16v18M23 42v6M30 16v32M36 16v18M36 42v6M44 16v32M51 16v18M51 42v6M57 16v32"/></svg>
             </div>
           </div>
           <p class="eyebrow" data-i18n="idle.eyebrow">READY FOR CHECK-IN</p>
-          <h1 data-i18n="idle.heading">Tap your member card</h1>
-          <p class="subhead" data-i18n="idle.subhead">Hold the card near the reader. Approval appears instantly.</p>
+          <h1 data-i18n="idle.headingCard">Tap your member card</h1>
+          <p class="subhead" data-i18n="idle.subheadCard">Hold the card near the reader. Approval appears instantly.</p>
         </div>
 
         <div id="result-view" class="view result-view" hidden>
@@ -72,13 +75,13 @@
       </section>
 
       <footer class="footer">
-        <button id="test-toggle" class="test-toggle" type="button" data-i18n="footer.testCardToggle">Test a card</button>
+        <button id="test-toggle" class="test-toggle" type="button" data-i18n="footer.testCardToggleCard">Test a card</button>
         <form id="test-form" class="test-form" hidden>
-          <label for="test-uid" data-i18n="footer.cardUidLabel">Card UID</label>
+          <label for="test-uid" data-i18n="footer.cardUidLabelCard">Card UID</label>
           <input id="test-uid" autocomplete="off" data-i18n-placeholder="footer.cardUidPlaceholder" placeholder="Try 10000001" />
           <button type="submit" data-i18n="footer.checkInSubmit">Check in</button>
         </form>
-        <p id="scan-hint" data-i18n-html="footer.scanHintHtml">Waiting for card <span>•</span> Tab member management <span>•</span> F11 full screen</p>
+        <p id="scan-hint" data-i18n-html="footer.scanHintHtmlCard">Waiting for card <span>•</span> Tab member management <span>•</span> F11 full screen</p>
       </footer>
     </main>
 
@@ -91,7 +94,7 @@
             <h2 id="admin-title" data-i18n="admin.title">Member management</h2>
           </div>
           <div class="admin-header-actions">
-            <button id="dashboard-test-toggle" class="text-button" type="button" data-i18n="footer.testCardToggle">Test a card</button>
+            <button id="dashboard-test-toggle" class="text-button" type="button" data-i18n="footer.testCardToggleCard">Test a card</button>
             <form id="dashboard-test-form" class="dashboard-test-form" hidden>
               <input id="dashboard-test-uid" autocomplete="off" data-i18n-placeholder="footer.cardUidPlaceholder" placeholder="Try 10000001" />
               <button class="renew-button" type="submit" data-i18n="footer.checkInSubmit">Check in</button>
@@ -155,9 +158,9 @@
           <div id="admin-add" class="admin-section">
             <div id="card-capture" class="card-capture">
               <span class="capture-dot"></span>
-              <div><strong data-i18n="addMember.cardCaptureHint">Tap an unassigned card</strong><small data-i18n="addMember.cardCaptureSubhint">The UID will appear here automatically.</small></div>
-              <output id="captured-uid" data-i18n="addMember.cardCaptureWaiting">Waiting for card…</output>
-              <button id="scan-different-card" class="text-button" type="button" hidden data-i18n="addMember.scanDifferentCard">Scan a different card</button>
+              <div><strong data-i18n="addMember.cardCaptureHintCard">Tap an unassigned card</strong><small data-i18n="addMember.cardCaptureSubhint">The UID will appear here automatically.</small></div>
+              <output id="captured-uid" data-i18n="addMember.cardCaptureWaitingCard">Waiting for card…</output>
+              <button id="scan-different-card" class="text-button" type="button" hidden data-i18n="addMember.scanDifferentCardCard">Scan a different card</button>
             </div>
 
             <form id="add-member-form" class="admin-form">
@@ -330,6 +333,19 @@
               <div id="language-choice-row" class="language-choice-row" role="radiogroup" aria-label="Language">
                 <button class="language-choice" type="button" data-language-choice="en" role="radio" aria-checked="false" data-i18n="settings.language.english">English</button>
                 <button class="language-choice" type="button" data-language-choice="cs" role="radio" aria-checked="false" data-i18n="settings.language.czech">Čeština</button>
+              </div>
+            </div>
+
+            <div class="settings-block">
+              <h3 data-i18n="settings.scanMethod.heading">Scan method</h3>
+              <p class="settings-hint" data-i18n="settings.scanMethod.hint">
+                Changes the on-screen instructions and icon to match your reader -- both a card
+                reader and a barcode scanner plug in and work the same way underneath, so this is
+                just about showing members the right instructions for what's actually at the desk.
+              </p>
+              <div id="scan-method-choice-row" class="scan-method-choice-row" role="radiogroup" aria-label="Scan method">
+                <button class="scan-method-choice" type="button" data-scan-method-choice="card" role="radio" aria-checked="false" data-i18n="settings.scanMethod.card">Card reader</button>
+                <button class="scan-method-choice" type="button" data-scan-method-choice="barcode" role="radio" aria-checked="false" data-i18n="settings.scanMethod.barcode">Barcode scanner</button>
               </div>
             </div>
 

@@ -521,6 +521,36 @@ async function runSmokeCapture() {
     "document.querySelector('[data-language-choice=\"en\"]').click()"
   );
   await new Promise((resolve) => setTimeout(resolve, 300));
+  // Scan method: purely cosmetic (see applyScanMethod's own comment -- a card reader and a barcode
+  // scanner are indistinguishable to scan-router.js), but confirm the swap actually reaches the DOM
+  // -- the idle-view text/icon (checked directly, since single-window smoke mode never shows that
+  // customer-facing stage to screenshot) and the still-visible Add-member hint/test-scan labels.
+  await mainWindow.webContents.executeJavaScript("document.querySelector('[data-scan-method-choice=\"barcode\"]').click()");
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  const barcodeState = await mainWindow.webContents.executeJavaScript(`({
+    idleHeading: idleHeading.textContent,
+    cardIconHidden: scanCardIcon.hidden,
+    barcodeIconHidden: scanBarcodeIcon.hidden,
+    captureHint: cardCaptureHint.textContent,
+    capturedUidPlaceholder: capturedUid.textContent,
+    scanDifferentLabel: scanDifferentCardButton.textContent,
+    testLabel: testToggle.textContent,
+    scanHint: document.querySelector('#scan-hint').textContent
+  })`);
+  if (barcodeState.idleHeading !== 'Scan your membership barcode'
+    || barcodeState.cardIconHidden !== true || barcodeState.barcodeIconHidden !== false
+    || barcodeState.captureHint !== 'Scan an unassigned barcode'
+    || barcodeState.capturedUidPlaceholder !== 'Waiting for barcode…'
+    || barcodeState.scanDifferentLabel !== 'Scan a different barcode'
+    || barcodeState.testLabel !== 'Test a scan'
+    || !barcodeState.scanHint.startsWith('Waiting for barcode')) {
+    throw new Error(`Scan method did not switch to barcode wording as expected: ${JSON.stringify(barcodeState)}`);
+  }
+  await mainWindow.webContents.executeJavaScript("setAdminTab('add')");
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  await captureScreenshot('09j-scan-method-barcode.png');
+  await mainWindow.webContents.executeJavaScript("document.querySelector('[data-scan-method-choice=\"card\"]').click()");
+  await new Promise((resolve) => setTimeout(resolve, 300));
   // Session expiry: main.js's own 5-minute staff-session timer (STAFF_SESSION_MS) can lock the
   // server side at any moment the renderer isn't watching for it -- simulate that exact race by
   // calling lock-staff directly (bypassing the renderer's own closeAdmin/staffSessionActive path

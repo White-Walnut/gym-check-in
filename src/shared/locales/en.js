@@ -32,10 +32,16 @@ const en = {
     readerReady: 'Reader ready'
   },
 
+  // headingCard/subheadCard are shown when Settings > Scan method is "Card" (the default); the
+  // Barcode variants when it's "Barcode" -- see the scanMethod handling in renderer.js, which swaps
+  // the data-i18n key these elements point at rather than picking between two fixed strings, so a
+  // later language switch still renders the right one (same pattern as the kiosk scan-hint).
   idle: {
     eyebrow: 'READY FOR CHECK-IN',
-    heading: 'Tap your member card',
-    subhead: 'Hold the card near the reader. Approval appears instantly.'
+    headingCard: 'Tap your member card',
+    headingBarcode: 'Scan your membership barcode',
+    subheadCard: 'Hold the card near the reader. Approval appears instantly.',
+    subheadBarcode: 'Point the scanner at your barcode. Approval appears instantly.'
   },
 
   result: {
@@ -43,12 +49,16 @@ const en = {
   },
 
   footer: {
-    testCardToggle: 'Test a card',
-    cardUidLabel: 'Card UID',
+    testCardToggleCard: 'Test a card',
+    testCardToggleBarcode: 'Test a scan',
+    cardUidLabelCard: 'Card UID',
+    cardUidLabelBarcode: 'Barcode',
     cardUidPlaceholder: 'Try 10000001',
     checkInSubmit: 'Check in',
-    scanHintHtml: 'Waiting for card <span>•</span> Tab member management <span>•</span> F11 full screen',
-    scanHintKioskHtml: 'Waiting for card <span>•</span> F11 full screen'
+    scanHintHtmlCard: 'Waiting for card <span>•</span> Tab member management <span>•</span> F11 full screen',
+    scanHintHtmlBarcode: 'Waiting for barcode <span>•</span> Tab member management <span>•</span> F11 full screen',
+    scanHintKioskHtmlCard: 'Waiting for card <span>•</span> F11 full screen',
+    scanHintKioskHtmlBarcode: 'Waiting for barcode <span>•</span> F11 full screen'
   },
 
   admin: {
@@ -88,10 +98,13 @@ const en = {
   },
 
   addMember: {
-    cardCaptureHint: 'Tap an unassigned card',
+    cardCaptureHintCard: 'Tap an unassigned card',
+    cardCaptureHintBarcode: 'Scan an unassigned barcode',
     cardCaptureSubhint: 'The UID will appear here automatically.',
-    cardCaptureWaiting: 'Waiting for card…',
-    scanDifferentCard: 'Scan a different card',
+    cardCaptureWaitingCard: 'Waiting for card…',
+    cardCaptureWaitingBarcode: 'Waiting for barcode…',
+    scanDifferentCardCard: 'Scan a different card',
+    scanDifferentCardBarcode: 'Scan a different barcode',
     firstName: 'First name',
     lastName: 'Last name',
     membershipLegend: 'Membership',
@@ -105,15 +118,18 @@ const en = {
     optionalHint: 'optional',
     amountPlaceholder: 'e.g. 500',
     save: 'Save member',
-    tapNextCard: 'Tap the next card.',
-    savedSuccess: '{name} saved. The card is ready.'
+    tapNextCardCard: 'Tap the next card.',
+    tapNextCardBarcode: 'Scan the next barcode.',
+    savedSuccessCard: '{name} saved. The card is ready.',
+    savedSuccessBarcode: '{name} saved. The barcode is ready.'
   },
 
   renew: {
     searchLabel: 'Find by member name or card UID',
     searchPlaceholder: 'Start typing…',
     scanToFind: 'Scan to find',
-    tapCardToJump: 'Tap a card to jump to that member.',
+    tapCardToJumpCard: 'Tap a card to jump to that member.',
+    tapCardToJumpBarcode: 'Scan a barcode to jump to that member.',
     jumpedToCard: 'Jumped to card {uid}.',
     expiringWithin: 'Expiring within',
     days: 'days',
@@ -148,8 +164,10 @@ const en = {
     takePhoto: 'Take photo',
     chooseFile: 'Choose file…',
     removePhoto: 'Remove photo',
-    tapReplacementCard: 'Tap the replacement card.',
-    cardCaptured: 'Card {uid} captured.',
+    tapReplacementCardCard: 'Tap the replacement card.',
+    tapReplacementCardBarcode: 'Scan the replacement barcode.',
+    cardCapturedCard: 'Card {uid} captured.',
+    cardCapturedBarcode: 'Barcode {uid} captured.',
     firstName: 'First name',
     lastName: 'Last name',
     cardUid: 'Card UID',
@@ -219,6 +237,14 @@ const en = {
       hint: 'Applies right away, on this PC only.',
       english: 'English',
       czech: 'Čeština'
+    },
+    scanMethod: {
+      heading: 'Scan method',
+      hint: 'Changes the on-screen instructions and icon to match your reader -- both a card reader '
+        + 'and a barcode scanner plug in and work the same way underneath, so this is just about '
+        + "showing members the right instructions for what's actually at the desk.",
+      card: 'Card reader',
+      barcode: 'Barcode scanner'
     },
     pin: {
       heading: 'Change staff PIN',

@@ -34,8 +34,10 @@ const cs = {
 
   idle: {
     eyebrow: 'PŘIPRAVENO K PŘÍCHODU',
-    heading: 'Přiložte svou členskou kartu',
-    subhead: 'Podržte kartu u čtečky. Schválení se zobrazí okamžitě.'
+    headingCard: 'Přiložte svou členskou kartu',
+    headingBarcode: 'Naskenujte svůj čárový kód členství',
+    subheadCard: 'Podržte kartu u čtečky. Schválení se zobrazí okamžitě.',
+    subheadBarcode: 'Namiřte skener na čárový kód. Schválení se zobrazí okamžitě.'
   },
 
   result: {
@@ -43,12 +45,16 @@ const cs = {
   },
 
   footer: {
-    testCardToggle: 'Otestovat kartu',
-    cardUidLabel: 'UID karty',
+    testCardToggleCard: 'Otestovat kartu',
+    testCardToggleBarcode: 'Otestovat sken',
+    cardUidLabelCard: 'UID karty',
+    cardUidLabelBarcode: 'Čárový kód',
     cardUidPlaceholder: 'Zkuste 10000001',
     checkInSubmit: 'Zapsat příchod',
-    scanHintHtml: 'Čeká se na kartu <span>•</span> Tab správa členů <span>•</span> F11 celá obrazovka',
-    scanHintKioskHtml: 'Čeká se na kartu <span>•</span> F11 celá obrazovka'
+    scanHintHtmlCard: 'Čeká se na kartu <span>•</span> Tab správa členů <span>•</span> F11 celá obrazovka',
+    scanHintHtmlBarcode: 'Čeká se na čárový kód <span>•</span> Tab správa členů <span>•</span> F11 celá obrazovka',
+    scanHintKioskHtmlCard: 'Čeká se na kartu <span>•</span> F11 celá obrazovka',
+    scanHintKioskHtmlBarcode: 'Čeká se na čárový kód <span>•</span> F11 celá obrazovka'
   },
 
   admin: {
@@ -88,10 +94,13 @@ const cs = {
   },
 
   addMember: {
-    cardCaptureHint: 'Přiložte nepřiřazenou kartu',
+    cardCaptureHintCard: 'Přiložte nepřiřazenou kartu',
+    cardCaptureHintBarcode: 'Naskenujte nepřiřazený čárový kód',
     cardCaptureSubhint: 'UID se zde zobrazí automaticky.',
-    cardCaptureWaiting: 'Čeká se na kartu…',
-    scanDifferentCard: 'Načíst jinou kartu',
+    cardCaptureWaitingCard: 'Čeká se na kartu…',
+    cardCaptureWaitingBarcode: 'Čeká se na čárový kód…',
+    scanDifferentCardCard: 'Načíst jinou kartu',
+    scanDifferentCardBarcode: 'Naskenovat jiný čárový kód',
     firstName: 'Jméno',
     lastName: 'Příjmení',
     membershipLegend: 'Členství',
@@ -105,15 +114,18 @@ const cs = {
     optionalHint: 'volitelné',
     amountPlaceholder: 'např. 500',
     save: 'Uložit člena',
-    tapNextCard: 'Přiložte další kartu.',
-    savedSuccess: '{name} uložen(a). Karta je připravena.'
+    tapNextCardCard: 'Přiložte další kartu.',
+    tapNextCardBarcode: 'Naskenujte další čárový kód.',
+    savedSuccessCard: '{name} uložen(a). Karta je připravena.',
+    savedSuccessBarcode: '{name} uložen(a). Čárový kód je připraven.'
   },
 
   renew: {
     searchLabel: 'Najít podle jména člena nebo UID karty',
     searchPlaceholder: 'Začněte psát…',
     scanToFind: 'Najít přiložením karty',
-    tapCardToJump: 'Přiložte kartu pro přechod na daného člena.',
+    tapCardToJumpCard: 'Přiložte kartu pro přechod na daného člena.',
+    tapCardToJumpBarcode: 'Naskenujte čárový kód pro přechod na daného člena.',
     jumpedToCard: 'Přechod na kartu {uid}.',
     expiringWithin: 'Vyprší do',
     days: 'dní',
@@ -148,8 +160,10 @@ const cs = {
     takePhoto: 'Vyfotit',
     chooseFile: 'Vybrat soubor…',
     removePhoto: 'Odebrat fotku',
-    tapReplacementCard: 'Přiložte náhradní kartu.',
-    cardCaptured: 'Karta {uid} načtena.',
+    tapReplacementCardCard: 'Přiložte náhradní kartu.',
+    tapReplacementCardBarcode: 'Naskenujte náhradní čárový kód.',
+    cardCapturedCard: 'Karta {uid} načtena.',
+    cardCapturedBarcode: 'Čárový kód {uid} načten.',
     firstName: 'Jméno',
     lastName: 'Příjmení',
     cardUid: 'UID karty',
@@ -219,6 +233,14 @@ const cs = {
       hint: 'Změna se projeví okamžitě, jen v tomto počítači.',
       english: 'English',
       czech: 'Čeština'
+    },
+    scanMethod: {
+      heading: 'Způsob skenování',
+      hint: 'Změní pokyny a ikonu na obrazovce podle vaší čtečky -- čtečka karet i skener čárových '
+        + 'kódů se připojují a fungují stejně, jde jen o to ukázat členům správné pokyny pro to, '
+        + 'co skutečně máte na recepci.',
+      card: 'Čtečka karet',
+      barcode: 'Skener čárových kódů'
     },
     pin: {
       heading: 'Změnit PIN personálu',

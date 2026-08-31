@@ -16,7 +16,13 @@ const assignCardButton = document.querySelector('#assign-card-button');
 const testToggle = document.querySelector('#test-toggle');
 const testForm = document.querySelector('#test-form');
 const testUid = document.querySelector('#test-uid');
+const testUidLabel = document.querySelector('label[for="test-uid"]');
 const toastStack = document.querySelector('#toast-stack');
+const idleHeading = document.querySelector('#idle-view h1');
+const idleSubhead = document.querySelector('#idle-view .subhead');
+const scanCardIcon = document.querySelector('#scan-card-icon');
+const scanBarcodeIcon = document.querySelector('#scan-barcode-icon');
+const cardCaptureHint = document.querySelector('#card-capture strong');
 
 const adminModal = document.querySelector('#admin-modal');
 const adminHeader = document.querySelector('#admin-header');
@@ -101,6 +107,7 @@ const themeSwatches = [...document.querySelectorAll('.theme-swatch')];
 const retentionDaysInput = document.querySelector('#retention-days-input');
 const saveRetentionButton = document.querySelector('#save-retention-button');
 const languageChoiceButtons = [...document.querySelectorAll('.language-choice')];
+const scanMethodChoiceButtons = [...document.querySelectorAll('.scan-method-choice')];
 const retentionStatus = document.querySelector('#retention-status');
 const exportMemberDataButton = document.querySelector('#export-member-data-button');
 const stageSection = document.querySelector('.stage');
@@ -160,6 +167,11 @@ let historySearchTimer;
 // below that produces user-facing text reads this at CALL time, not once at load, so a language
 // switch takes effect immediately without a restart.
 let currentLang = 'en';
+
+// Which physical device staff use to scan a member in -- purely cosmetic (see the "Scan method"
+// section far below), read from localStorage since main.js never needs it. Applied during the same
+// bootstrap pass as the language, once the DOM and window.i18n are both ready.
+let scanMethod = 'card';
 
 const REASON_CODES = new Set([
   'active', 'punchcard', 'expired', 'no_passes', 'frozen', 'cancelled',
@@ -394,20 +406,20 @@ function captureCard(uid) {
   cardCapture.classList.add('has-card');
   scanDifferentCardButton.hidden = false;
   armedCaptureTarget = null;
-  setStatus(addMemberStatus, window.i18n.t(currentLang, 'edit.cardCaptured', { uid: normalised }), 'success');
+  setStatus(addMemberStatus, scanText('edit.cardCapturedCard', 'edit.cardCapturedBarcode', { uid: normalised }), 'success');
   document.querySelector('#first-name').focus();
 }
 
 function clearCapturedCard() {
   memberCardUid.value = '';
-  capturedUid.textContent = window.i18n.t(currentLang, 'addMember.cardCaptureWaiting');
+  capturedUid.textContent = scanText('addMember.cardCaptureWaitingCard', 'addMember.cardCaptureWaitingBarcode');
   cardCapture.classList.remove('has-card');
   scanDifferentCardButton.hidden = true;
 }
 
 function captureEditCardUid(uid) {
   document.querySelector('#edit-card-uid').value = uid;
-  setStatus(editMemberStatus, window.i18n.t(currentLang, 'edit.cardCaptured', { uid }), 'success');
+  setStatus(editMemberStatus, scanText('edit.cardCapturedCard', 'edit.cardCapturedBarcode', { uid }), 'success');
 }
 
 function captureSearchUid(uid) {
@@ -957,17 +969,17 @@ editMembershipType.addEventListener('change', toggleEditPlanFields);
 scanDifferentCardButton.addEventListener('click', () => {
   clearCapturedCard();
   armedCaptureTarget = 'add-member';
-  setStatus(addMemberStatus, window.i18n.t(currentLang, 'addMember.tapNextCard'));
+  setStatus(addMemberStatus, scanText('addMember.tapNextCardCard', 'addMember.tapNextCardBarcode'));
 });
 
 scanToFindButton.addEventListener('click', () => {
   armedCaptureTarget = 'search';
-  setStatus(renewStatus, window.i18n.t(currentLang, 'renew.tapCardToJump'));
+  setStatus(renewStatus, scanText('renew.tapCardToJumpCard', 'renew.tapCardToJumpBarcode'));
 });
 
 scanReplaceCardButton.addEventListener('click', () => {
   armedCaptureTarget = 'edit-member';
-  setStatus(editMemberStatus, window.i18n.t(currentLang, 'edit.tapReplacementCard'));
+  setStatus(editMemberStatus, scanText('edit.tapReplacementCardCard', 'edit.tapReplacementCardBarcode'));
 });
 
 // "Change photo…" offers a choice rather than jumping straight to the file picker, so staff can
@@ -1180,7 +1192,7 @@ addMemberForm.addEventListener('submit', async (event) => {
     showError(addMemberStatus, response.error);
     return;
   }
-  setStatus(addMemberStatus, window.i18n.t(currentLang, 'addMember.savedSuccess', { name: response.data.name }), 'success');
+  setStatus(addMemberStatus, scanText('addMember.savedSuccessCard', 'addMember.savedSuccessBarcode', { name: response.data.name }), 'success');
   addMemberForm.reset();
   validUntil.value = previewMonthlyEndDate(1);
   monthlyFields.hidden = false;
@@ -1437,6 +1449,80 @@ languageChoiceButtons.forEach((button) => {
   });
 });
 
+// --- Scan method (card reader vs barcode scanner) -----------------------------------------------
+// Purely cosmetic: an RFID card reader and a laser barcode scanner both plug in as a generic USB
+// keyboard and are indistinguishable to scan-router.js, which only ever looks at keystroke timing
+// (see its own header comment) -- so this changes nothing about how a scan is actually detected or
+// processed. It only swaps which on-screen instructions and icon staff/members see, to match
+// whichever device is actually sitting at the desk. Saved to localStorage like the theme (not
+// main-authoritative like language): main.js never needs to know this, nothing it generates --
+// notifications, dialog titles -- mentions how the scan happened.
+const SCAN_METHOD_STORAGE_KEY = 'gym-checkin-scan-method';
+const VALID_SCAN_METHODS = ['card', 'barcode'];
+
+// Every dynamic (JS-generated, not static markup) string that mentions the physical scan action --
+// status messages like "Card {uid} captured." -- goes through this instead of a bare window.i18n.t()
+// call, so it automatically picks the Card or Barcode variant of a key pair without every call site
+// needing its own ternary.
+function scanText(cardKey, barcodeKey, params) {
+  return window.i18n.t(currentLang, scanMethod === 'barcode' ? barcodeKey : cardKey, params);
+}
+
+// #scan-hint's data-i18n-html key depends on BOTH independent toggles -- window role (kiosk vs not,
+// set once at startup by applyWindowRole) and scan method (changeable any time from Settings) -- so
+// it needs its own small combinator rather than letting either caller set the attribute directly and
+// risk one stomping the other's choice.
+function updateScanHintKey() {
+  const kiosk = appInfo.windowRole === 'kiosk';
+  const isBarcode = scanMethod === 'barcode';
+  const key = kiosk
+    ? (isBarcode ? 'footer.scanHintKioskHtmlBarcode' : 'footer.scanHintKioskHtmlCard')
+    : (isBarcode ? 'footer.scanHintHtmlBarcode' : 'footer.scanHintHtmlCard');
+  document.querySelector('#scan-hint').setAttribute('data-i18n-html', key);
+}
+
+// Rather than picking between two fixed strings, this points each element's data-i18n(-*) attribute
+// at the right Card/Barcode-suffixed key and lets the normal applyTranslations() pass render it --
+// same trick as the kiosk-role scan-hint above, so it composes correctly with a later language
+// switch (which just re-runs applyTranslations() against whatever key is currently set) instead of
+// needing every place that can change the page's text to know about every other one.
+function applyScanMethod(method) {
+  const isBarcode = method === 'barcode';
+  idleHeading.setAttribute('data-i18n', isBarcode ? 'idle.headingBarcode' : 'idle.headingCard');
+  idleSubhead.setAttribute('data-i18n', isBarcode ? 'idle.subheadBarcode' : 'idle.subheadCard');
+  cardCaptureHint.setAttribute('data-i18n', isBarcode ? 'addMember.cardCaptureHintBarcode' : 'addMember.cardCaptureHintCard');
+  capturedUid.setAttribute('data-i18n', isBarcode ? 'addMember.cardCaptureWaitingBarcode' : 'addMember.cardCaptureWaitingCard');
+  scanDifferentCardButton.setAttribute('data-i18n', isBarcode ? 'addMember.scanDifferentCardBarcode' : 'addMember.scanDifferentCardCard');
+  testToggle.setAttribute('data-i18n', isBarcode ? 'footer.testCardToggleBarcode' : 'footer.testCardToggleCard');
+  dashboardTestToggle.setAttribute('data-i18n', isBarcode ? 'footer.testCardToggleBarcode' : 'footer.testCardToggleCard');
+  testUidLabel.setAttribute('data-i18n', isBarcode ? 'footer.cardUidLabelBarcode' : 'footer.cardUidLabelCard');
+  scanCardIcon.hidden = isBarcode;
+  scanBarcodeIcon.hidden = !isBarcode;
+  scanMethodChoiceButtons.forEach((button) => {
+    const active = button.dataset.scanMethodChoice === method;
+    button.classList.toggle('is-active', active);
+    button.setAttribute('aria-checked', String(active));
+  });
+  updateScanHintKey();
+  window.i18n.applyTranslations(currentLang);
+}
+
+function setScanMethod(method) {
+  scanMethod = method;
+  applyScanMethod(method);
+  try {
+    localStorage.setItem(SCAN_METHOD_STORAGE_KEY, method);
+  } catch (error) {
+    console.error('Could not save the scan method -- it will reset next launch:', error);
+  }
+}
+
+scanMethodChoiceButtons.forEach((button) => {
+  button.addEventListener('click', () => {
+    if (button.dataset.scanMethodChoice !== scanMethod) setScanMethod(button.dataset.scanMethodChoice);
+  });
+});
+
 saveRetentionButton.addEventListener('click', async () => {
   saveRetentionButton.disabled = true;
   const response = await window.gym.setCheckinRetentionDays(Number(retentionDaysInput.value));
@@ -1558,11 +1644,9 @@ function applyWindowRole(role) {
   if (role === 'kiosk') {
     adminToggle.hidden = true;
     // Tab does nothing on this window in dual-screen mode (see the keydown handler above) -- don't
-    // advertise it as a way to reach member management here. Swaps the translation key rather than
-    // hardcoding kiosk-specific text, so a later language switch (see setLanguage above) still
-    // renders the right copy via the normal applyTranslations() pass instead of getting stomped back
-    // to the default (non-kiosk) hint text.
-    document.querySelector('#scan-hint').setAttribute('data-i18n-html', 'footer.scanHintKioskHtml');
+    // advertise it as a way to reach member management here. updateScanHintKey() (called from
+    // applyScanMethod, right after this in the bootstrap below) picks up windowRole from appInfo,
+    // already set by the time it runs, so nothing else is needed here.
   } else {
     // Every other role ('single', or 'staff' in dual-screen mode) is a permanent, PIN-gated staff
     // dashboard -- there's no public check-in stage to show on this window at all any more. A member
@@ -1585,10 +1669,18 @@ window.gym.getAppInfo().then((info) => {
   appInfo = info || appInfo;
   currentLang = appInfo.language || 'en';
   applyLanguageChoice(currentLang);
-  // Order matters: applyWindowRole may swap #scan-hint's data-i18n-html key for a kiosk-role window
-  // (see above), and this applyTranslations() pass is what actually renders whichever key ends up
-  // set -- it must run after, not before.
+  try {
+    const storedScanMethod = localStorage.getItem(SCAN_METHOD_STORAGE_KEY);
+    if (VALID_SCAN_METHODS.includes(storedScanMethod)) scanMethod = storedScanMethod;
+  } catch (error) {
+    // localStorage can throw in some restricted contexts -- fall back to the 'card' default.
+  }
+  // Order matters: applyWindowRole may swap #scan-hint's data-i18n-html key for a kiosk-role window,
+  // and applyScanMethod swaps several more (idle heading/subhead, the capture hint, the test-scan
+  // labels) -- this final applyTranslations() pass is what actually renders whichever keys end up
+  // set, so it must run after both, not before.
   applyWindowRole(appInfo.windowRole);
+  applyScanMethod(scanMethod);
   window.i18n.applyTranslations(currentLang);
   updateClock();
 });
