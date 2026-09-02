@@ -10,6 +10,10 @@
 // count, Czech's CLDR "many" category only ever applies to non-integers, so it never gets selected
 // here; "other" is what a whole 0 or 5+ count actually falls into).
 const cs = {
+  confirm: {
+    discardAddMember: 'Začali jste přidávat nového člena, ale ještě jste to neuložili. Zahodit rozepsané údaje a pokračovat?',
+    discardEditMember: 'Máte neuložené změny u tohoto člena. Zahodit je a pokračovat?'
+  },
   common: {
     approved: 'Schváleno',
     denied: 'Zamítnuto',
@@ -192,6 +196,11 @@ const cs = {
       reactivates: ' {name} je momentálně {status} a bude znovu aktivován(a).',
       confirm: '{name}:{lossText}{reactivateText} Pokračovat?',
       and: 'a'
+    },
+    riskyChange: {
+      statusChange: ' Změní jejich stav na {status}.',
+      cardChange: ' Nahradí jejich přiřazenou kartu (byla {oldUid}, nově {newUid}).',
+      confirm: '{name}:{changes} Pokračovat?'
     }
   },
 
@@ -394,6 +403,12 @@ const cs = {
   },
 
   main: {
+    confirm: {
+      quit: 'Ukončením aplikace se zastaví příchody členů, dokud ji znovu nespustíte. Pokračovat?',
+      quitWithUnsavedChanges: 'Ukončením aplikace se zastaví příchody členů a ztratí se neuložené změny v otevřeném formuláři. Pokračovat?',
+      quitCancel: 'Zrušit',
+      quitConfirm: 'Ukončit'
+    },
     dialogs: {
       exportHistoryTitle: 'Export historie příchodů',
       exportMemberDataTitle: 'Export dat člena',

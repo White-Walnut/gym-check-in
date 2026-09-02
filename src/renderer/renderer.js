@@ -187,6 +187,27 @@ let currentLang = 'en';
 // bootstrap pass as the language, once the DOM and window.i18n are both ready.
 let scanMethod = 'card';
 
+// --- Unsaved-changes tracking -------------------------------------------------------------------
+// Backs the "you'll lose what you typed" warnings on the Add/Edit member forms -- see
+// confirmDiscardUnsavedChanges() far below for where these actually get checked (tab switches, the
+// Lock button, opening a different member mid-edit, and quitting the app).
+let addMemberDirty = false;
+let editMemberDirty = false;
+// The member currently loaded into the Edit form, captured at open time so a later Save can tell
+// whether status/card UID actually changed from what was loaded -- see the risky-change confirm in
+// editMemberForm's submit handler.
+let editingOriginalMember = null;
+let currentAdminTab = 'add';
+
+addMemberForm.addEventListener('input', () => { addMemberDirty = true; });
+editMemberForm.addEventListener('input', () => { editMemberDirty = true; });
+
+// Exposed as a plain global rather than through preload/contextBridge, so main.js can read it
+// directly via webContents.executeJavaScript() when deciding what to show on a quit attempt -- the
+// same cross-process introspection technique already used throughout the smoke-capture script in
+// main.js, just reused here for a real (non-smoke) purpose.
+window.__gymHasUnsavedChanges = () => addMemberDirty || editMemberDirty;
+
 const REASON_CODES = new Set([
   'active', 'punchcard', 'expired', 'no_passes', 'frozen', 'cancelled',
   'unknown_card', 'system_error', 'invalid_uid'
@@ -509,6 +530,7 @@ function showRecoveryCode(code, thenEnterAdmin) {
 // kiosk-role window, which is a defensive fallback: in practice a kiosk window never opens the admin
 // panel at all, so this branch should be unreachable.
 function closeAdmin() {
+  if (!confirmDiscardUnsavedChanges()) return;
   clearTimeout(searchTimer);
   clearTimeout(historySearchTimer);
   setStatus(addMemberStatus, '');
@@ -536,6 +558,11 @@ function setStatus(element, message, type = '') {
 }
 
 function setAdminTab(tabName) {
+  // Re-clicking the tab already showing is a no-op, not a "leave" -- skip the check so a staff
+  // member idly re-clicking the tab they're typing in doesn't get warned about their own form.
+  if (tabName !== currentAdminTab && !confirmDiscardUnsavedChanges()) return;
+  currentAdminTab = tabName;
+
   const isAdd = tabName === 'add';
   const isRenew = tabName === 'renew';
   const isHistory = tabName === 'history';
@@ -834,6 +861,13 @@ function toggleEditPlanFields() {
 }
 
 function openMemberEditor(member, customDateOnly = false) {
+  // Opening any member's editor while one is already open with unsaved changes would silently
+  // overwrite those changes with the new (or even the same) member's fresh data -- confirm first,
+  // same as every other place that can discard an in-progress edit. Only checks the Edit form
+  // itself, not Add-member (an unrelated tab/flow that opening someone's editor has no bearing on).
+  if (!editMemberForm.hidden && !confirmDiscardEditMember()) return;
+  editingOriginalMember = member;
+  editMemberDirty = false;
   document.querySelector('#edit-member-id').value = member.id;
   document.querySelector('#edit-first-name').value = member.firstName;
   document.querySelector('#edit-last-name').value = member.lastName;
@@ -860,9 +894,54 @@ async function loadEditMemberPhoto(photoPath, name) {
   removePhotoButton.hidden = !photoPath;
 }
 
+// Closing the editor -- by any path, not just a confirmed discard -- always clears editMemberDirty
+// along with it: once the form isn't the one currently being looked at, whatever was typed into it
+// is moot, and leaving the flag set would wrongly block some later, unrelated action against a form
+// nobody can even see anymore.
 function closeMemberEditor() {
   editMemberForm.hidden = true;
   setStatus(editMemberStatus, '');
+  editingOriginalMember = null;
+  editMemberDirty = false;
+}
+
+// Shared by the post-save reset (addMemberForm's own submit handler) and by discarding an unsaved
+// Add-member form on request -- both mean the same thing: back to a blank, ready-for-the-next-card
+// state.
+function resetAddMemberForm() {
+  addMemberForm.reset();
+  validUntil.value = previewMonthlyEndDate(1);
+  monthlyFields.hidden = false;
+  punchcardFields.hidden = true;
+  clearCapturedCard();
+  armedCaptureTarget = 'add-member';
+  addMemberDirty = false;
+}
+
+// --- Unsaved-changes confirms --------------------------------------------------------------------
+// Each returns true when it's safe to proceed (nothing unsaved, or the user confirmed discarding
+// it) and false when the caller should abort whatever it was about to do. Kept as two separate
+// single-form checks (rather than one that always checks both) so a place that only cares about one
+// form -- like openMemberEditor, re-entering mid-edit -- doesn't drag in an unrelated warning about
+// the other tab's form. confirmDiscardUnsavedChanges() below combines both for the places that
+// really do leave the admin area entirely (switching tabs, Lock, quitting).
+
+function confirmDiscardAddMember() {
+  if (!addMemberDirty) return true;
+  if (!window.confirm(window.i18n.t(currentLang, 'confirm.discardAddMember'))) return false;
+  resetAddMemberForm();
+  return true;
+}
+
+function confirmDiscardEditMember() {
+  if (!editMemberDirty) return true;
+  if (!window.confirm(window.i18n.t(currentLang, 'confirm.discardEditMember'))) return false;
+  closeMemberEditor(); // also clears editMemberDirty
+  return true;
+}
+
+function confirmDiscardUnsavedChanges() {
+  return confirmDiscardAddMember() && confirmDiscardEditMember();
 }
 
 function describeDiscard(member, discard) {
@@ -889,6 +968,29 @@ function describeDiscard(member, discard) {
     })
     : '';
   return window.i18n.t(currentLang, 'edit.discard.confirm', { name: member.name, lossText, reactivateText });
+}
+
+// Two edits the app doesn't otherwise catch before they're saved: switching a member's status to
+// Cancelled or Frozen, and replacing their linked card. Neither loses a measurable balance the way
+// a plan conversion does (see describeDiscard above), so there's no natural "this discards N passes"
+// prompt to catch a careless click here -- this fills that gap specifically for the Edit form's Save
+// button. Returns null (nothing to confirm) when neither actually changed from what was loaded.
+function describeRiskyEditChanges(original, next) {
+  const parts = [];
+  if (next.membershipStatus !== original.membershipStatus
+    && (next.membershipStatus === 'cancelled' || next.membershipStatus === 'frozen')) {
+    parts.push(window.i18n.t(currentLang, 'edit.riskyChange.statusChange', {
+      status: window.i18n.t(currentLang, `common.status.${next.membershipStatus}`)
+    }));
+  }
+  if (normaliseUid(next.cardUid) !== normaliseUid(original.cardUid)) {
+    parts.push(window.i18n.t(currentLang, 'edit.riskyChange.cardChange', {
+      oldUid: original.cardUid,
+      newUid: normaliseUid(next.cardUid)
+    }));
+  }
+  if (!parts.length) return null;
+  return window.i18n.t(currentLang, 'edit.riskyChange.confirm', { name: original.name, changes: parts.join('') });
 }
 
 function amountToCents(value) {
@@ -1207,17 +1309,18 @@ addMemberForm.addEventListener('submit', async (event) => {
     return;
   }
   setStatus(addMemberStatus, scanText('addMember.savedSuccessCard', 'addMember.savedSuccessBarcode', { name: response.data.name }), 'success');
-  addMemberForm.reset();
-  validUntil.value = previewMonthlyEndDate(1);
-  monthlyFields.hidden = false;
-  punchcardFields.hidden = true;
-  addAmountPaid.value = '';
-  clearCapturedCard();
-  armedCaptureTarget = 'add-member';
+  resetAddMemberForm();
 });
 
 editMemberForm.addEventListener('submit', async (event) => {
   event.preventDefault();
+  if (editingOriginalMember) {
+    const riskyChangeMessage = describeRiskyEditChanges(editingOriginalMember, {
+      membershipStatus: document.querySelector('#edit-membership-status').value,
+      cardUid: document.querySelector('#edit-card-uid').value
+    });
+    if (riskyChangeMessage && !window.confirm(riskyChangeMessage)) return;
+  }
   const submitButton = editMemberForm.querySelector('[type="submit"]');
   submitButton.disabled = true;
   const membershipType = editMembershipType.value;
@@ -1239,6 +1342,7 @@ editMemberForm.addEventListener('submit', async (event) => {
   }
   setStatus(editMemberStatus, window.i18n.t(currentLang, 'renew.updatedSuccess', { name: response.data.name }), 'success');
   setStatus(renewStatus, window.i18n.t(currentLang, 'renew.updatedSuccess', { name: response.data.name }), 'success');
+  editMemberDirty = false;
   await runMemberSearch();
   setTimeout(closeMemberEditor, 700);
 });

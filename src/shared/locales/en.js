@@ -10,6 +10,13 @@
 // textContent, so they may contain simple inline tags like <strong>. Every other key is always
 // injected as plain text -- never write a key expecting HTML unless its name says so.
 const en = {
+  // Renderer-side confirm() prompts guarding against an accidentally-lost or accidentally-risky
+  // change -- see confirmDiscardAddMember/confirmDiscardEditMember/describeRiskyEditChanges in
+  // renderer.js for exactly when each of these fires.
+  confirm: {
+    discardAddMember: "You've started adding a new member but haven't saved yet. Discard this and continue?",
+    discardEditMember: "You have unsaved changes to this member's details. Discard them and continue?"
+  },
   common: {
     approved: 'Approved',
     denied: 'Denied',
@@ -196,6 +203,14 @@ const en = {
       reactivates: ' {name} is currently {status} and will be reactivated.',
       confirm: '{name}:{lossText}{reactivateText} Continue?',
       and: 'and'
+    },
+    // A second, independent confirm on the Edit form's Save button, for two changes that don't lose
+    // a measurable balance the way the discard block above does, so nothing else would ever catch a
+    // careless click here -- see describeRiskyEditChanges in renderer.js.
+    riskyChange: {
+      statusChange: ' Changes their status to {status}.',
+      cardChange: ' Replaces their linked card (was {oldUid}, now {newUid}).',
+      confirm: '{name}:{changes} Continue?'
     }
   },
 
@@ -403,6 +418,12 @@ const en = {
   // the same file (not a separate one) so a translator only ever has to look in one place per
   // language, even though these never reach the renderer.
   main: {
+    confirm: {
+      quit: 'Quitting will stop members from checking in until the app is reopened. Continue?',
+      quitWithUnsavedChanges: 'Quitting will stop members from checking in, and unsaved changes in an open form will be lost. Continue?',
+      quitCancel: 'Cancel',
+      quitConfirm: 'Quit'
+    },
     dialogs: {
       exportHistoryTitle: 'Export check-in history',
       exportMemberDataTitle: 'Export member data',

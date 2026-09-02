@@ -166,6 +166,14 @@ function assertUnlocked() {
 let kioskLockdownEnabled = false;
 let kioskWindowIsCustomerFacing = false;
 
+// --- Quit confirmation ---------------------------------------------------------------------------
+// Closing any window (the single staff dashboard, or either window in two-screen mode) now stops
+// members from checking in, so it's asked about instead of just happening -- see confirmAndQuit()
+// below. Set true once staff actually confirms (or from a flow that already confirmed its own way,
+// like "Restart and install" for updates), so the real close that follows isn't asked about a
+// second time.
+let quittingConfirmed = false;
+
 // --- Dual-screen -------------------------------------------------------------------------------
 // Whether to use two windows when two displays are detected -- see GymDatabase.getDualScreenEnabled.
 // Read once at startup; changing it in Settings takes effect on the next launch rather than trying
@@ -205,6 +213,38 @@ function windowOptions(extra = {}) {
   };
 }
 
+// Asks once, natively (dialog.showMessageBox -- this intercepts a window closing at the OS level,
+// before any confirmation from inside a page could apply, and has to work the same way regardless
+// of which window or mode triggered it), then actually quits if confirmed. Checks the form-bearing
+// window (staffWindow in two-screen mode, or the single kioskWindow otherwise -- a kiosk-role window
+// in two-screen mode never shows the admin panel at all, so it can never itself be the one with
+// unsaved changes) for unsaved changes via the same window.__gymHasUnsavedChanges() the renderer
+// already exposes for its own tab-switch/Lock warnings, so the one message covers both risks
+// instead of showing two popups back to back.
+async function confirmAndQuit(triggeringWindow) {
+  const formWindow = staffFacingWindow();
+  let hasUnsavedChanges = false;
+  if (formWindow && !formWindow.isDestroyed()) {
+    hasUnsavedChanges = await formWindow.webContents
+      .executeJavaScript('window.__gymHasUnsavedChanges ? window.__gymHasUnsavedChanges() : false')
+      .catch(() => false);
+  }
+  const { response } = await dialog.showMessageBox(triggeringWindow, {
+    type: 'question',
+    buttons: [
+      t(currentLanguage, 'main.confirm.quitCancel'),
+      t(currentLanguage, 'main.confirm.quitConfirm')
+    ],
+    defaultId: 0,
+    cancelId: 0,
+    message: t(currentLanguage, hasUnsavedChanges ? 'main.confirm.quitWithUnsavedChanges' : 'main.confirm.quit')
+  });
+  if (response === 1) {
+    quittingConfirmed = true;
+    app.quit();
+  }
+}
+
 function attachCommonWindowBehaviors(win, { isKioskDisplay }) {
   win.webContents.on('preload-error', (_event, preloadPath, error) => {
     logger.logError('window', `Preload script failed to load: ${preloadPath}`, error);
@@ -236,6 +276,20 @@ function attachCommonWindowBehaviors(win, { isKioskDisplay }) {
       if (!smokeDirectory && kioskLockdownEnabled) event.preventDefault();
     });
   }
+  // Applies to every window, not just this one -- in two-screen mode, closing EITHER the staff or
+  // the kiosk window now closes both and quits the whole app (previously closing just the staff
+  // window silently orphaned the kiosk display, with no window left to manage it or relay results
+  // to). Skipped when this window can't actually be closed anyway (kiosk lockdown already vetoed it
+  // above -- asking "do you want to quit?" on an unclosable window would be pure confusion), when
+  // already mid-confirmed-quit (letting the real close through), and in smoke mode (which uses
+  // .destroy() specifically to bypass all of this and never fires 'close' in the first place; this
+  // is defense in depth, not the mechanism that protects it).
+  win.on('close', (event) => {
+    if (smokeDirectory || quittingConfirmed) return;
+    if (isKioskDisplay && kioskLockdownEnabled) return;
+    event.preventDefault();
+    confirmAndQuit(win);
+  });
   win.webContents.on('before-input-event', (event, input) => {
     if (isKioskDisplay && !smokeDirectory && kioskLockdownEnabled) return; // kiosk mode owns fullscreen while locked
     if (input.type === 'keyDown' && input.key === 'F11') {
@@ -435,6 +489,13 @@ async function runSmokeCapture() {
   await mainWindow.webContents.executeJavaScript("submitUid('10000003')");
   await new Promise((resolve) => setTimeout(resolve, 800));
   await captureScreenshot('06-punchcard.png');
+  // The membership-type radio click above (real .click(), not a raw .value= assignment -- see its
+  // own comment) left the Add-member form genuinely dirty, same as a real staff member getting
+  // pulled away mid-entry. That's exactly the scenario the new unsaved-changes guard on tab
+  // switches exists to catch -- resolve it here the way a careful staff member would (discard,
+  // nothing of real value was entered), so the switch to Renew below isn't itself the confirm-prompt
+  // test; that's covered on its own further down.
+  await mainWindow.webContents.executeJavaScript("resetAddMemberForm()");
   await mainWindow.webContents.executeJavaScript("openAdmin('renew'); memberSearch.value = ''; runMemberSearch()");
   await new Promise((resolve) => setTimeout(resolve, 1200));
   await captureScreenshot('07-admin-renew.png');
@@ -609,6 +670,58 @@ async function runSmokeCapture() {
   await mainWindow.webContents.executeJavaScript("staffLockPinInput.value = '1234'; staffLockEnterForm.requestSubmit();");
   await new Promise((resolve) => setTimeout(resolve, 500));
   await captureScreenshot('10b-unlocked-again.png');
+
+  // Unsaved-changes/risky-edit confirms (see confirmDiscardUnsavedChanges and
+  // describeRiskyEditChanges in renderer.js): verifies a dirty Add-member form actually blocks a tab
+  // switch when the user says Cancel, actually proceeds and discards when they say OK, and that the
+  // Edit form's risky-change message comes out combined and correctly worded. Never touches a REAL
+  // window.confirm() (which would hang this whole script waiting for a click nothing can provide) --
+  // window.confirm is swapped for a canned function for the duration of each check instead.
+  await mainWindow.webContents.executeJavaScript(`(async () => {
+    setAdminTab('add');
+    const first = document.querySelector('#first-name');
+    first.value = 'Temp';
+    first.dispatchEvent(new Event('input', { bubbles: true }));
+    const dirtyAfterTyping = window.__gymHasUnsavedChanges();
+
+    window.confirm = () => false; // simulate clicking Cancel on the discard prompt
+    setAdminTab('renew');
+    const blockedTab = currentAdminTab;
+    const stillDirtyAfterBlock = addMemberDirty;
+
+    window.confirm = () => true; // simulate clicking OK
+    setAdminTab('renew');
+    const allowedTab = currentAdminTab;
+    const clearAfterAllow = addMemberDirty;
+    const firstNameAfterDiscard = document.querySelector('#first-name').value;
+
+    const riskyBoth = describeRiskyEditChanges(
+      { name: 'Test Person', membershipStatus: 'active', cardUid: 'AAA' },
+      { membershipStatus: 'cancelled', cardUid: 'BBB' }
+    );
+    const riskyNone = describeRiskyEditChanges(
+      { name: 'Test Person', membershipStatus: 'active', cardUid: 'AAA' },
+      { membershipStatus: 'active', cardUid: 'AAA' }
+    );
+
+    return { dirtyAfterTyping, blockedTab, stillDirtyAfterBlock, allowedTab, clearAfterAllow, firstNameAfterDiscard, riskyBoth, riskyNone };
+  })()`).then((result) => {
+    const expected = {
+      dirtyAfterTyping: true,
+      blockedTab: 'add',
+      stillDirtyAfterBlock: true,
+      allowedTab: 'renew',
+      clearAfterAllow: false,
+      firstNameAfterDiscard: '',
+      riskyBoth: 'Test Person: Changes their status to cancelled. Replaces their linked card (was AAA, now BBB). Continue?',
+      riskyNone: null
+    };
+    for (const key of Object.keys(expected)) {
+      if (JSON.stringify(result[key]) !== JSON.stringify(expected[key])) {
+        throw new Error(`Unsaved-changes/risky-edit check "${key}" failed: expected ${JSON.stringify(expected[key])}, got ${JSON.stringify(result[key])} (full: ${JSON.stringify(result)})`);
+      }
+    }
+  });
 
   const errorLogPath = path.join(smokeDirectory, 'console-errors.log');
   if (rendererErrors.length) {
@@ -1015,6 +1128,9 @@ app.whenReady().then(async () => {
     }
   });
   ipcMain.handle('quit-and-install-update', () => {
+    // Already confirmed its own way (the "Restart and install" button's own window.confirm in
+    // renderer.js) -- skip the generic quit warning below so this isn't confirmed twice in a row.
+    quittingConfirmed = true;
     quitAndInstallUpdate();
   });
 
