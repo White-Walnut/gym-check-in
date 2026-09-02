@@ -163,6 +163,14 @@ let scanBuffer = '';
 let scanState = { ...EMPTY_STATE };
 let lastKeyAt = 0;
 
+// Diagnostic only, completely independent of scanState/FAST_CHAR_GAP_MS above -- records every
+// qualifying keystroke's real gap regardless of whether the speed-based classifier thinks it looks
+// scan-like, so a reader that's still not recognized even after raising that threshold once already
+// (see scan-router.js's own comment on that) can be diagnosed from real numbers instead of a third
+// guess. See flushRawScanCapture() below for where this actually gets logged.
+let rawScanCapture = [];
+let rawScanCaptureFlushTimer = null;
+
 let checkInQueue = [];
 let processingCheckIn = false;
 let lastSubmittedUid = '';
@@ -1036,6 +1044,26 @@ async function renewMember(memberId, renewalType, clickedButton) {
   await runMemberSearch();
 }
 
+// Logs the real gap sequence for whatever was just typed/scanned, as long as it was at least 2
+// characters -- a single stray keystroke isn't a "burst" of anything and would just be noise. Called
+// on Enter (most readers terminate a scan that way) AND after a pause with nothing else logged it
+// yet (see the setTimeout below), so this still captures something useful even for a reader that
+// never sends Enter at all. `reason` is just for the log line, not behavior.
+//
+// Deliberately logs ONLY the count and the gaps, never the actual characters: this fires for any
+// fast-ish multi-character burst, which very much includes ordinary staff typing (a member's name, a
+// search query) -- not just card scans. The gaps are all this diagnostic actually needs; the typed
+// content itself has no business in a log file, even one that stays local.
+function flushRawScanCapture(reason) {
+  clearTimeout(rawScanCaptureFlushTimer);
+  rawScanCaptureFlushTimer = null;
+  if (rawScanCapture.length >= 2) {
+    const gaps = rawScanCapture.slice(1).map((entry) => Math.round(entry.gap));
+    console.error(`[scan-timing-raw] ${reason}, ${rawScanCapture.length} keystrokes, gaps in ms: ${gaps.join(', ')}`);
+  }
+  rawScanCapture = [];
+}
+
 document.addEventListener('keydown', (event) => {
   // No more Escape-closes-admin: the dashboard (single window, or the staff window in dual-screen
   // mode) is a permanent page now, not a dismissable overlay -- see applyWindowRole and closeAdmin.
@@ -1046,6 +1074,7 @@ document.addEventListener('keydown', (event) => {
   }
 
   if (event.key === 'Enter') {
+    flushRawScanCapture('Enter');
     if (isConfirmedScan(scanState)) {
       event.preventDefault();
       const uid = scanBuffer;
@@ -1063,6 +1092,10 @@ document.addEventListener('keydown', (event) => {
     const now = performance.now();
     const gap = now - lastKeyAt;
     lastKeyAt = now;
+    if (gap > 2000) rawScanCapture = []; // a long pause means this is a new, unrelated attempt
+    rawScanCapture.push({ gap: rawScanCapture.length ? gap : 0 }); // gap only -- never the typed character, see flushRawScanCapture
+    clearTimeout(rawScanCaptureFlushTimer);
+    rawScanCaptureFlushTimer = setTimeout(() => flushRawScanCapture('pause, no Enter seen'), 1500);
     const next = advanceScanState(scanState, gap);
     if (next.length === 0) {
       // Pace looked human -- abandon tracking and let this (and future) keystrokes type normally.
