@@ -1065,6 +1065,15 @@ document.addEventListener('keydown', (event) => {
     const next = advanceScanState(scanState, gap);
     if (next.length === 0) {
       // Pace looked human -- abandon tracking and let this (and future) keystrokes type normally.
+      // Only logged once a burst already looked scan-like (2+ fast keystrokes in a row) and THEN got
+      // broken by a slower one -- normal human typing essentially never produces that by chance, so
+      // this stays quiet during ordinary use and only speaks up for a reader that's borderline or
+      // genuinely too slow for FAST_CHAR_GAP_MS (see that constant's own comment in scan-router.js).
+      // console.error routes this into the persistent log file already (Settings > Diagnostics), via
+      // the same console-message forwarding every other renderer error already goes through.
+      if (scanState.length >= 2) {
+        console.error(`[scan-timing] a ${scanState.length}-keystroke burst was abandoned -- next gap was ${Math.round(gap)}ms (FAST_CHAR_GAP_MS is ${FAST_CHAR_GAP_MS}ms)`);
+      }
       scanBuffer = '';
       scanState = next;
       return;

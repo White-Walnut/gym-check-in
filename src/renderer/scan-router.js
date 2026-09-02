@@ -3,14 +3,26 @@
 // member's card scan gets typed into whatever admin text field staff happened to be using (adding a
 // new member, searching, editing) instead of checking them in or being captured on purpose.
 //
-// A keyboard-wedge RFID reader types each character single-digit-milliseconds apart; a human typing
-// a UID by hand does not. advanceScanState() uses that to decide, one keystroke at a time, whether
-// the *current* keystroke should be suppressed (kept out of whatever field has focus) because it's
-// very likely part of a machine-typed scan. The first keystroke of any burst can't be classified yet
-// (there's no prior gap to compare), so it is never suppressed -- a true scan's first character can
-// rarely, cosmetically leak into a focused field; a full UID never can, which is the failure mode
-// that mattered. As soon as a keystroke's timing looks human (a gap above FAST_CHAR_GAP_MS), the
-// burst is abandoned and typing behaves completely normally again.
+// A keyboard-wedge RFID reader types each character far faster than a human ever types an unfamiliar
+// character sequence by hand -- but "far faster" varies a lot by reader model/firmware, anywhere from
+// single-digit milliseconds up to (for some readers, especially ones with a configurable compatibility
+// delay) closer to 100ms per character. advanceScanState() uses that gap to decide, one keystroke at a
+// time, whether the *current* keystroke should be suppressed (kept out of whatever field has focus)
+// because it's very likely part of a machine-typed scan. The first keystroke of any burst can't be
+// classified yet (there's no prior gap to compare), so it is never suppressed -- a true scan's first
+// character can rarely, cosmetically leak into a focused field; a full UID never can, which is the
+// failure mode that mattered. As soon as a keystroke's timing looks human (a gap above
+// FAST_CHAR_GAP_MS), the burst is abandoned and typing behaves completely normally again.
+//
+// FAST_CHAR_GAP_MS was originally 40ms and turned out too tight for at least one real reader in the
+// field -- its keystrokes never cleared the bar, so it was never recognized as a scan at all, and its
+// digits just typed into whatever field had focus (the PIN screen, "Test a card", etc.) exactly like
+// a person typing. Raised to 100ms, comfortably below sustained human typing speed for an unfamiliar,
+// non-memorized character sequence (people are consistently much slower than that per character for
+// digits/letters with no muscle memory to lean on) while covering a much wider range of real hardware.
+// If a reader still isn't recognized even at this threshold, see the "[scan-timing]" diagnostic log
+// lines in renderer.js's keydown handler (forwarded into the persistent log file, Settings >
+// Diagnostics) for the actual gap it's producing.
 //
 // routeScan() then decides, given the explicit "armed capture" state the app is in (never DOM focus),
 // whether a confirmed scan should be captured into a specific field or treated as a check-in. Staff
@@ -18,7 +30,7 @@
 // ARM_ADD_MEMBER / ARM_EDIT_MEMBER / ARM_SEARCH usage in renderer.js.
 
 const GAP_RESET_MS = 250; // a gap this large (or the very first keystroke) starts a fresh burst
-const FAST_CHAR_GAP_MS = 40; // a gap this small between two consecutive characters is HID-reader speed
+const FAST_CHAR_GAP_MS = 100; // a gap this small between two consecutive characters is HID-reader speed
 const MIN_SCAN_LENGTH = 4;
 
 const EMPTY_STATE = Object.freeze({ length: 0, allFast: true });
