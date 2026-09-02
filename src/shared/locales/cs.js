@@ -276,6 +276,7 @@ const cs = {
         + 'prošetřit -- z tohoto počítače se sám od sebe nikam neodesílá. Exportujte jej a soubor '
         + 'pošlete, pokud o to budete požádáni.',
       exportButton: 'Exportovat log…',
+      openFolderButton: 'Zobrazit soubor s logem ve složce',
       savedSuccess: 'Log uložen do {path}'
     },
     kiosk: {

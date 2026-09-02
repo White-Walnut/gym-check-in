@@ -286,6 +286,7 @@ const en = {
         + "looked into -- it never leaves this PC on its own. Export it and send the file if you're "
         + 'asked to.',
       exportButton: 'Export log file…',
+      openFolderButton: 'Show log file in folder',
       savedSuccess: 'Log file saved to {path}'
     },
     kiosk: {

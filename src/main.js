@@ -1089,6 +1089,19 @@ app.whenReady().then(async () => {
     }
   });
 
+  // A second, simpler way to get the same file out during a real incident -- Export above needs
+  // staff to navigate a save dialog and then go find where they put it before they can actually
+  // send it anywhere. This just opens the folder with the file already selected, so it's a
+  // right-click away from being attached to an email/message however they normally would -- no
+  // dialog, no remembering a save location, no typing a path into File Explorer by hand.
+  ipcMain.handle('open-log-folder', () => {
+    if (!staffUnlocked) return { ok: false, error: 'not_authorized' };
+    const logPath = logger.getLogFilePath();
+    if (!logPath || !fs.existsSync(logPath)) return { ok: false, error: 'no_log_yet' };
+    shell.showItemInFolder(logPath);
+    return { ok: true };
+  });
+
   ipcMain.handle('app-info', (event) => {
     let windowRole = 'single';
     if (staffWindow && kioskWindow) {

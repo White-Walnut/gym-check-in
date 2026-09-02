@@ -109,6 +109,7 @@ const regenerateRecoveryButton = document.querySelector('#regenerate-recovery-bu
 const exportBackupButton = document.querySelector('#export-backup-button');
 const backupStatus = document.querySelector('#backup-status');
 const exportLogButton = document.querySelector('#export-log-button');
+const openLogFolderButton = document.querySelector('#open-log-folder-button');
 const diagnosticsStatus = document.querySelector('#diagnostics-status');
 const checkUpdatesButton = document.querySelector('#check-updates-button');
 const downloadUpdateButton = document.querySelector('#download-update-button');
@@ -1673,6 +1674,13 @@ exportLogButton.addEventListener('click', async () => {
     return;
   }
   setStatus(diagnosticsStatus, window.i18n.t(currentLang, 'settings.diagnostics.savedSuccess', { path: response.data.path }), 'success');
+});
+
+openLogFolderButton.addEventListener('click', async () => {
+  openLogFolderButton.disabled = true;
+  const response = await window.gym.openLogFolder();
+  openLogFolderButton.disabled = false;
+  if (!response.ok) showError(diagnosticsStatus, response.error);
 });
 
 checkUpdatesButton.addEventListener('click', async () => {

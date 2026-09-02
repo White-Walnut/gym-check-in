@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld('gym', {
   lockStaff: () => ipcRenderer.invoke('lock-staff'),
   exportBackup: () => ipcRenderer.invoke('export-backup'),
   exportLogFile: () => ipcRenderer.invoke('export-log-file'),
+  openLogFolder: () => ipcRenderer.invoke('open-log-folder'),
 
   getLanguage: () => ipcRenderer.invoke('get-language'),
   setLanguage: (language) => ipcRenderer.invoke('set-language', language),
