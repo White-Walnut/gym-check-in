@@ -8,6 +8,10 @@ be hand-edited; if a version's list looks wrong, the fix belongs in that script,
 An "Unreleased" section, when present, lists commits already on `main` that haven't shipped in a
 release yet -- the next `npm run release` replaces it with that version's own dated entry.
 
+## v1.9.9 -- 2026-09-02
+
+- Add raw scan-timing capture -- logs real gaps regardless of any threshold
+
 ## v1.9.8 -- 2026-09-02
 
 - Show the running version number in Settings > Updates
