@@ -8,10 +8,11 @@ be hand-edited; if a version's list looks wrong, the fix belongs in that script,
 An "Unreleased" section, when present, lists commits already on `main` that haven't shipped in a
 release yet -- the next `npm run release` replaces it with that version's own dated entry.
 
-## Unreleased
+## v1.9.7 -- 2026-09-02
 
-- Fix two-screen orphaned-window bug; warn before quitting or losing unsaved edits
+- Add CHANGELOG.md, kept up to date automatically on every release
 - Fix the real cause of v1.9.6's empty release notes: cmd.exe eats the caret
+- Fix two-screen orphaned-window bug; warn before quitting or losing unsaved edits
 
 ## v1.9.6 -- 2026-08-31
 
