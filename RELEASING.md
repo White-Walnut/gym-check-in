@@ -39,10 +39,12 @@ npm run release
 ```
 
 That's the whole thing. `npm run release` does four jobs in one:
-1. Bumps the version number in `package.json` (and makes its own commit + tag for just that)
+1. Bumps the version number in `package.json`, updates `CHANGELOG.md` with everything committed since
+   the last release (see that file's own intro), and makes one commit + tag for all of it
 2. Pushes everything to GitHub
 3. Builds the installer
-4. Uploads it as a new GitHub Release, via `gh`
+4. Uploads it as a new GitHub Release, via `gh` -- its release notes are that same `CHANGELOG.md`
+   entry, so the two are always identical
 
 Three variants, depending on how big the change was:
 
