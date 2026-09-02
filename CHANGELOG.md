@@ -8,6 +8,12 @@ be hand-edited; if a version's list looks wrong, the fix belongs in that script,
 An "Unreleased" section, when present, lists commits already on `main` that haven't shipped in a
 release yet -- the next `npm run release` replaces it with that version's own dated entry.
 
+## v1.9.8 -- 2026-09-02
+
+- Show the running version number in Settings > Updates
+- Fix: real RFID reader not recognized -- FAST_CHAR_GAP_MS was too tight
+- Add a one-click 'Show log file in folder' button next to Export
+
 ## v1.9.7 -- 2026-09-02
 
 - Add CHANGELOG.md, kept up to date automatically on every release
