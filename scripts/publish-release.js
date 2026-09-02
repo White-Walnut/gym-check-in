@@ -21,7 +21,22 @@ const distDir = path.join(rootDir, 'dist');
 // generating an empty-looking "Full Changelog: compare link" and nothing else.
 function buildReleaseNotes() {
   try {
-    const previousTag = execSync(`git describe --tags --abbrev=0 ${tag}^`, { cwd: rootDir }).toString().trim();
+    // Defensive: make sure every tag on the remote actually exists locally before `describe` below
+    // relies on one -- `git push --tags` only ever pushes local tags outward, never pulls older
+    // ones in, so a clone missing a historical tag stays missing it without an explicit fetch.
+    execSync('git fetch --tags', { cwd: rootDir, stdio: 'ignore' });
+    // The actual root cause of v1.9.6 shipping "No notable changes." despite five real commits:
+    // `${tag}^` (caret, "first parent") tested correctly through Git Bash, but this script runs via
+    // Node's execSync, which spawns cmd.exe by default on Windows -- and cmd.exe treats `^` as its
+    // own escape character, silently stripping it, so the actual command git received was
+    // `describe v1.9.6` (no `^` at all), which "resolves" to v1.9.6 itself. `~1` means the same
+    // "first parent" in git but isn't a shell metacharacter in cmd.exe, sidestepping the whole
+    // problem regardless of which shell ends up running this.
+    const previousTag = execSync(`git describe --tags --abbrev=0 ${tag}~1`, { cwd: rootDir }).toString().trim();
+    // Defensive: if the "previous" tag somehow resolves to this same release (seen once before,
+    // root cause never fully pinned down), treat it the same as not finding one at all rather than
+    // silently producing an empty (and therefore misleadingly blank-looking) commit range.
+    if (previousTag === tag) throw new Error(`git describe resolved the previous tag as ${tag} itself`);
     const commits = execSync(`git log ${previousTag}..${tag} --pretty=format:%s`, { cwd: rootDir })
       .toString()
       .trim()
@@ -31,7 +46,8 @@ function buildReleaseNotes() {
       // says nothing about what changed.
       .filter((line) => !/^\d+\.\d+\.\d+$/.test(line));
     return commits.length ? commits.map((line) => `- ${line}`).join('\n') : 'No notable changes.';
-  } catch {
+  } catch (error) {
+    console.error(`Could not build release notes from git history (${error.message}) -- falling back to a generic note.`);
     return 'Initial release.';
   }
 }
