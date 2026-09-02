@@ -307,6 +307,7 @@ const cs = {
     },
     updates: {
       heading: 'Aktualizace',
+      currentVersion: 'Aktuálně spuštěná verze:',
       hint: 'Kontrola aktualizací probíhá automaticky jednou denně. Nic se nestáhne ani '
         + 'nenainstaluje bez vašeho potvrzení. Tlačítkem níže si aktualizaci můžete kdykoli '
         + 'vyžádat i ručně.',

@@ -319,6 +319,7 @@ const en = {
     },
     updates: {
       heading: 'Updates',
+      currentVersion: 'Currently running:',
       hint: 'Checks automatically once a day, and never downloads or installs anything without you '
         + 'confirming it here first. Use the button below any time for an immediate check.',
       check: 'Check for updates',

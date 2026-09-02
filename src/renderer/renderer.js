@@ -112,6 +112,7 @@ const exportLogButton = document.querySelector('#export-log-button');
 const openLogFolderButton = document.querySelector('#open-log-folder-button');
 const diagnosticsStatus = document.querySelector('#diagnostics-status');
 const checkUpdatesButton = document.querySelector('#check-updates-button');
+const currentVersionDisplay = document.querySelector('#current-version-display');
 const downloadUpdateButton = document.querySelector('#download-update-button');
 const installUpdateButton = document.querySelector('#install-update-button');
 const updateStatusEl = document.querySelector('#update-status');
@@ -1829,4 +1830,7 @@ window.gym.getAppInfo().then((info) => {
   applyScanMethod(scanMethod);
   window.i18n.applyTranslations(currentLang);
   updateClock();
+  // So "did the fix actually ship, and did this PC actually get it" is a glance at Settings instead
+  // of a guess -- see the app-info handler in main.js for where this comes from (app.getVersion()).
+  if (appInfo.version) currentVersionDisplay.textContent = `v${appInfo.version}`;
 });

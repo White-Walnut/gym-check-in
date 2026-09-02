@@ -1108,7 +1108,7 @@ app.whenReady().then(async () => {
       if (event.sender.id === kioskWindow.webContents.id) windowRole = 'kiosk';
       else if (event.sender.id === staffWindow.webContents.id) windowRole = 'staff';
     }
-    return { databasePath, smoke: Boolean(smokeDirectory), windowRole, language: currentLanguage };
+    return { databasePath, smoke: Boolean(smokeDirectory), windowRole, language: currentLanguage, version: app.getVersion() };
   });
 
   ipcMain.handle('photo-url', (_event, photoPath) => {
