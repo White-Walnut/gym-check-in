@@ -671,6 +671,24 @@ async function runSmokeCapture() {
   await new Promise((resolve) => setTimeout(resolve, 500));
   await captureScreenshot('10b-unlocked-again.png');
 
+  // Reader-with-no-Enter-terminator: confirmed against a real reader in the field whose UID sat
+  // correctly detected in scanState (allFast, past MIN_SCAN_LENGTH) the entire time and simply never
+  // got acted on, because the app previously only ever dispatched a scan from inside the Enter
+  // handler. Dispatching real keydown events in a tight loop naturally produces sub-millisecond
+  // gaps (all within one synchronous tick) without needing to fake timestamps, so this exercises the
+  // real advanceScanState()/tryAutoDispatchScan() path exactly as a genuine fast reader would drive
+  // it -- deliberately never dispatches 'Enter' at all.
+  await mainWindow.webContents.executeJavaScript(
+    "['1','0','0','0','0','0','0','1'].forEach((k) => document.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true })));"
+  );
+  await new Promise((resolve) => setTimeout(resolve, 800)); // SCAN_AUTO_DISPATCH_PAUSE_MS (300ms) plus room for the real check-in IPC round trip
+  const noEnterScanResult = await mainWindow.webContents.executeJavaScript(
+    '({ uid: activityFeedEntries[0]?.uid, allowed: activityFeedEntries[0]?.allowed })'
+  );
+  if (noEnterScanResult.uid !== '10000001' || noEnterScanResult.allowed !== true) {
+    throw new Error(`A fast scan with no Enter terminator was not auto-dispatched as expected: ${JSON.stringify(noEnterScanResult)}`);
+  }
+
   // Unsaved-changes/risky-edit confirms (see confirmDiscardUnsavedChanges and
   // describeRiskyEditChanges in renderer.js): verifies a dirty Add-member form actually blocks a tab
   // switch when the user says Cancel, actually proceeds and discards when they say OK, and that the

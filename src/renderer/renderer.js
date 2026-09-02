@@ -162,6 +162,14 @@ let armedCaptureTarget = null; // null | 'add-member' | 'edit-member' | 'search'
 let scanBuffer = '';
 let scanState = { ...EMPTY_STATE };
 let lastKeyAt = 0;
+// Some real readers never send Enter (or any other terminator) at all -- confirmed against a real
+// reader whose full 20-character UID sat correctly detected in scanState the entire time (allFast,
+// well past MIN_SCAN_LENGTH) and simply never got dispatched, because dispatch only ever happened
+// inside the Enter branch below. This is the fallback: if a confirmed-looking burst goes quiet for a
+// short pause with no Enter, dispatch it anyway -- see tryAutoDispatchScan() below. Readers that DO
+// send Enter are unaffected: Enter still fires immediately, well before this pause ever elapses.
+let scanAutoDispatchTimer = null;
+const SCAN_AUTO_DISPATCH_PAUSE_MS = 300;
 
 // Diagnostic only, completely independent of scanState/FAST_CHAR_GAP_MS above -- records every
 // qualifying keystroke's real gap regardless of whether the speed-based classifier thinks it looks
@@ -1044,6 +1052,20 @@ async function renewMember(memberId, renewalType, clickedButton) {
   await runMemberSearch();
 }
 
+// The no-Enter fallback itself -- see SCAN_AUTO_DISPATCH_PAUSE_MS's own comment above for why this
+// exists. Re-checks isConfirmedScan() rather than assuming the burst that scheduled this timer is
+// still the current one: Enter may have already fired and reset everything in the meantime, in which
+// case this is correctly a no-op against a fresh EMPTY_STATE.
+function tryAutoDispatchScan() {
+  scanAutoDispatchTimer = null;
+  if (isConfirmedScan(scanState)) {
+    const uid = scanBuffer;
+    scanBuffer = '';
+    scanState = { ...EMPTY_STATE };
+    dispatchScan(uid);
+  }
+}
+
 // Logs the real gap sequence for whatever was just typed/scanned, as long as it was at least 2
 // characters -- a single stray keystroke isn't a "burst" of anything and would just be noise. Called
 // on Enter (most readers terminate a scan that way) AND after a pause with nothing else logged it
@@ -1075,6 +1097,8 @@ document.addEventListener('keydown', (event) => {
 
   if (event.key === 'Enter') {
     flushRawScanCapture('Enter');
+    clearTimeout(scanAutoDispatchTimer);
+    scanAutoDispatchTimer = null;
     if (isConfirmedScan(scanState)) {
       event.preventDefault();
       const uid = scanBuffer;
@@ -1108,6 +1132,8 @@ document.addEventListener('keydown', (event) => {
       if (scanState.length >= 2) {
         console.error(`[scan-timing] a ${scanState.length}-keystroke burst was abandoned -- next gap was ${Math.round(gap)}ms (FAST_CHAR_GAP_MS is ${FAST_CHAR_GAP_MS}ms)`);
       }
+      clearTimeout(scanAutoDispatchTimer);
+      scanAutoDispatchTimer = null;
       scanBuffer = '';
       scanState = next;
       return;
@@ -1115,6 +1141,11 @@ document.addEventListener('keydown', (event) => {
     if (next.suppressed) event.preventDefault();
     scanBuffer = next.length === 1 ? event.key : scanBuffer + event.key;
     scanState = next;
+    // Re-armed on every fast keystroke, not just once the burst first becomes confirmed: a reader
+    // that never sends Enter needs this to keep pushing out while its characters are still arriving,
+    // otherwise it would fire mid-scan the moment the burst first reached MIN_SCAN_LENGTH.
+    clearTimeout(scanAutoDispatchTimer);
+    scanAutoDispatchTimer = isConfirmedScan(next) ? setTimeout(tryAutoDispatchScan, SCAN_AUTO_DISPATCH_PAUSE_MS) : null;
   }
 });
 
