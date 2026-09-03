@@ -545,6 +545,31 @@ async function runSmokeCapture() {
   await mainWindow.webContents.executeJavaScript("openAdmin('renew'); memberSearch.value = ''; runMemberSearch()");
   await new Promise((resolve) => setTimeout(resolve, 1200));
   await captureScreenshot('07-admin-renew.png');
+  // The renewal quick-actions (+1 month / +10 passes) ask for an optional amount paid via
+  // window.prompt() -- Electron's renderer doesn't support window.prompt() at all, confirmed against
+  // a real build where clicking either button threw "prompt() is not supported" and silently did
+  // nothing (window.confirm(), used all over this file successfully, works fine; prompt() specifically
+  // does not). A real click on the real button (not calling renewMember() directly), so this exercises
+  // the whole path including the text-prompt modal that replaced window.prompt() -- see
+  // showTextPrompt() in renderer.js.
+  await mainWindow.webContents.executeJavaScript(
+    "[...document.querySelectorAll('.member-row')].find((row) => row.textContent.includes('Alex Morgan')).querySelector('.renew-actions button').click();"
+  );
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  const promptShown = await mainWindow.webContents.executeJavaScript('!textPromptModal.hidden');
+  if (!promptShown) {
+    throw new Error('The amount-paid prompt did not appear after clicking +1 month -- window.prompt() may be silently failing again');
+  }
+  await captureScreenshot('07f-amount-paid-prompt.png');
+  await mainWindow.webContents.executeJavaScript("textPromptInput.value = '450'; textPromptForm.requestSubmit();");
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+  const renewalResult = await mainWindow.webContents.executeJavaScript(
+    '({ promptHidden: textPromptModal.hidden, statusText: renewStatus.textContent })'
+  );
+  if (!renewalResult.promptHidden || !renewalResult.statusText) {
+    throw new Error(`+1 month renewal did not complete as expected: ${JSON.stringify(renewalResult)}`);
+  }
+  await captureScreenshot('07g-renewed-with-amount.png');
   // Clicking a member's name (not the Edit button) should open the same editor -- exercise the real
   // click listener, not just call openMemberEditor() directly, so this actually verifies the new
   // click-to-edit affordance rather than assuming it's wired correctly.
@@ -695,6 +720,27 @@ async function runSmokeCapture() {
   );
   if (!revertedState.topbarLogoHidden || revertedState.topbarName !== 'GYM CHECK-IN' || !revertedState.adminBrandHidden) {
     throw new Error(`Removing gym branding did not revert to the default look as expected: ${JSON.stringify(revertedState)}`);
+  }
+  // Regenerating the recovery code also asks for the current PIN via window.prompt() -- same bug,
+  // same fix, verified the same way: a real click on the real button, confirming the text-prompt
+  // modal (password-typed this time) appears and completes the flow instead of throwing. Success
+  // shows the new code via window.alert(), which -- like window.confirm() elsewhere in this script --
+  // is a real blocking native dialog nothing here would ever dismiss, so it's mocked to a no-op first.
+  await mainWindow.webContents.executeJavaScript("window.alert = () => {}; regenerateRecoveryButton.click();");
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  const recoveryPromptShown = await mainWindow.webContents.executeJavaScript(
+    "({ shown: !textPromptModal.hidden, inputType: textPromptInput.type })"
+  );
+  if (!recoveryPromptShown.shown || recoveryPromptShown.inputType !== 'password') {
+    throw new Error(`The current-PIN prompt for regenerating the recovery code did not appear as expected: ${JSON.stringify(recoveryPromptShown)}`);
+  }
+  await mainWindow.webContents.executeJavaScript("textPromptInput.value = '1234'; textPromptForm.requestSubmit();");
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  const recoveryRegenResult = await mainWindow.webContents.executeJavaScript(
+    '({ promptHidden: textPromptModal.hidden, buttonReenabled: !regenerateRecoveryButton.disabled })'
+  );
+  if (!recoveryRegenResult.promptHidden || !recoveryRegenResult.buttonReenabled) {
+    throw new Error(`Regenerating the recovery code did not complete as expected: ${JSON.stringify(recoveryRegenResult)}`);
   }
   // Update flow: simulate the real autoUpdater events (no actual network check in smoke mode) to
   // verify the Download/Restart-and-install buttons actually appear and disappear at the right

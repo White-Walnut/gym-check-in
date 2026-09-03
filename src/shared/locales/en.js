@@ -22,6 +22,7 @@ const en = {
     denied: 'Denied',
     loading: 'Loading…',
     cancel: 'Cancel',
+    ok: 'OK',
     edit: 'Edit',
     unknownCard: 'Unknown card',
     unrecognisedCard: 'Unrecognised card',

@@ -508,6 +508,18 @@ h1 { margin: 0; font-size: clamp(48px, 6vw, 78px); font-weight: 700; line-height
 .camera-frame video { transform: scaleX(-1); }
 .camera-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
 
+/* Stand-in for window.prompt() -- see this modal's own comment in index.html for why. z-index above
+   .camera-modal (50): both can only ever be triggered one at a time in practice, but this should
+   always win if that assumption is ever wrong. */
+.text-prompt-modal { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 28px; }
+.text-prompt-modal[hidden] { display: none; }
+.text-prompt-backdrop { position: absolute; inset: 0; background: rgba(3,5,4,.6); backdrop-filter: blur(12px); }
+.text-prompt-panel { position: relative; width: min(360px, calc(100vw - 56px)); padding: 22px; border: 1px solid var(--border); border-radius: 18px; background: var(--bg-panel); box-shadow: 0 34px 100px rgba(0,0,0,.4); display: grid; gap: 14px; }
+.text-prompt-panel p { margin: 0; font-size: 14px; }
+.text-prompt-panel input { width: 100%; min-height: 43px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 9px; outline: none; background: var(--bg-raised); color: var(--text-main); font: inherit; box-sizing: border-box; }
+.text-prompt-panel input:focus { border-color: var(--accent); }
+.text-prompt-actions { display: flex; justify-content: flex-end; gap: 10px; }
+
 .edit-form-actions { display: flex; align-items: center; gap: 16px; }
 .update-actions { display: flex; align-items: center; gap: 10px; }
 .danger-text-button { color: var(--danger); }

@@ -508,6 +508,29 @@
       </section>
     </div>
 
+    <!-- Electron's renderer supports window.confirm() and window.alert() (used throughout this app)
+         but deliberately does NOT support window.prompt() -- calling it just throws "prompt() is not
+         supported", confirmed against a real build where this broke the +1 month/+10 passes renewal
+         buttons entirely. This is the replacement: a plain in-page modal standing in for it wherever
+         free-text input was needed (amount paid, current PIN to regenerate a recovery code). -->
+    <div id="text-prompt-modal" class="text-prompt-modal" hidden>
+      <div class="text-prompt-backdrop"></div>
+      <form id="text-prompt-form" class="text-prompt-panel" role="dialog" aria-modal="true" aria-labelledby="text-prompt-message">
+        <p id="text-prompt-message"></p>
+        <!-- type and maxlength are both set dynamically by showTextPrompt() per use: type=password +
+             maxlength=8 for the "current PIN" prompt is what lets the scan-vs-human-typing buffer
+             logic built for the other PIN fields (see isScanSensitiveField in renderer.js) correctly
+             tell a real card scan apart from someone typing their PIN in here too -- a static
+             maxlength here would also wrongly cap the plain-text amount-paid prompt, which needs to
+             accept more than 8 characters for a larger amount. -->
+        <input id="text-prompt-input" autocomplete="off" />
+        <div class="text-prompt-actions">
+          <button type="button" id="text-prompt-cancel" class="text-button" data-i18n="common.cancel">Cancel</button>
+          <button type="submit" class="primary-button" data-i18n="common.ok">OK</button>
+        </div>
+      </form>
+    </div>
+
     <script src="../shared/dates.js"></script>
     <script src="../shared/renewal.js"></script>
     <script src="scan-router.js"></script>

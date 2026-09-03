@@ -159,6 +159,12 @@ const gymNameForm = document.querySelector('#gym-name-form');
 const gymNameInput = document.querySelector('#gym-name-input');
 const brandingStatus = document.querySelector('#branding-status');
 
+const textPromptModal = document.querySelector('#text-prompt-modal');
+const textPromptForm = document.querySelector('#text-prompt-form');
+const textPromptMessage = document.querySelector('#text-prompt-message');
+const textPromptInput = document.querySelector('#text-prompt-input');
+const textPromptCancelButton = document.querySelector('#text-prompt-cancel');
+
 const cameraModal = document.querySelector('#camera-modal');
 const cameraVideo = document.querySelector('#camera-video');
 const cameraCanvas = document.querySelector('#camera-canvas');
@@ -569,9 +575,13 @@ function captureEditCardUid(uid) {
   setStatus(editMemberStatus, scanText('edit.cardCapturedCard', 'edit.cardCapturedBarcode', { uid }), 'success');
 }
 
-function captureSearchUid(uid) {
+async function captureSearchUid(uid) {
   memberSearch.value = uid;
-  runMemberSearch();
+  // Same ordering fix as renewMember/deleteMemberButton/the edit-member success handler below:
+  // runMemberSearch() unconditionally clears renewStatus as part of refreshing the list, so it has to
+  // run (and be awaited, not fired-and-forgotten) before this message is set, not after -- otherwise
+  // the search resolving asynchronously wipes this message back out moments after it appears.
+  await runMemberSearch();
   setStatus(renewStatus, window.i18n.t(currentLang, 'renew.jumpedToCard', { uid }), 'success');
 }
 
@@ -1112,8 +1122,44 @@ function amountToCents(value) {
   return Number.isFinite(parsed) && parsed >= 0 ? Math.round(parsed * 100) : null;
 }
 
-function promptForAmountCents() {
-  const raw = window.prompt(window.i18n.t(currentLang, 'checkin.amountPaidPrompt'));
+// Stand-in for window.prompt(), which Electron's renderer doesn't support at all -- confirmed against
+// a real build, where it threw "prompt() is not supported" and silently broke every renewal button
+// (window.alert()/window.confirm(), used elsewhere in this file, both work fine; prompt() specifically
+// does not). Resolves with the typed value, or null if cancelled -- same contract as window.prompt()
+// itself, so both call sites below needed no changes beyond awaiting this instead.
+let activeTextPromptResolve = null;
+
+function showTextPrompt(message, { inputType = 'text', maxLength = null } = {}) {
+  return new Promise((resolve) => {
+    activeTextPromptResolve = resolve;
+    textPromptMessage.textContent = message;
+    textPromptInput.type = inputType;
+    // The maxLength IDL property itself rejects a negative "no limit" value outright (throws
+    // IndexSizeError) -- toggling the attribute instead is the actual correct way to add or remove
+    // the limit, confirmed the hard way when the very first version of this threw on every open.
+    if (maxLength) textPromptInput.setAttribute('maxlength', String(maxLength));
+    else textPromptInput.removeAttribute('maxlength');
+    textPromptInput.value = '';
+    textPromptModal.hidden = false;
+    setTimeout(() => textPromptInput.focus(), 50);
+  });
+}
+
+function closeTextPrompt(value) {
+  textPromptModal.hidden = true;
+  const resolve = activeTextPromptResolve;
+  activeTextPromptResolve = null;
+  if (resolve) resolve(value);
+}
+
+textPromptForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  closeTextPrompt(textPromptInput.value);
+});
+textPromptCancelButton.addEventListener('click', () => closeTextPrompt(null));
+
+async function promptForAmountCents() {
+  const raw = await showTextPrompt(window.i18n.t(currentLang, 'checkin.amountPaidPrompt'));
   return raw === null ? null : amountToCents(raw);
 }
 
@@ -1126,7 +1172,7 @@ async function renewMember(memberId, renewalType, clickedButton) {
       if (!window.confirm(describeDiscard(member, discard))) return;
     }
   }
-  const amountCents = promptForAmountCents();
+  const amountCents = await promptForAmountCents();
 
   const buttons = [...clickedButton.closest('.renew-actions').querySelectorAll('button')];
   buttons.forEach((button) => { button.disabled = true; });
@@ -1142,8 +1188,12 @@ async function renewMember(memberId, renewalType, clickedButton) {
       count: response.data.passesRemaining,
       unit: window.i18n.plural(currentLang, 'common.passUnit', response.data.passesRemaining)
     });
-  setStatus(renewStatus, window.i18n.t(currentLang, 'renew.renewResult', { name: response.data.name, change }), 'success');
+  // Order matters: runMemberSearch() unconditionally clears renewStatus as part of refreshing the
+  // list (the right thing to do after, say, a plain search) -- setting the success message before it
+  // used to mean this got wiped out immediately, so staff saw nothing happen even though the renewal
+  // had genuinely succeeded. Refresh the list first, then show the message last.
   await runMemberSearch();
+  setStatus(renewStatus, window.i18n.t(currentLang, 'renew.renewResult', { name: response.data.name, change }), 'success');
 }
 
 // The no-Enter fallback itself -- see SCAN_AUTO_DISPATCH_PAUSE_MS's own comment above for why this
@@ -1498,8 +1548,10 @@ deleteMemberButton.addEventListener('click', async () => {
     return;
   }
   closeMemberEditor();
-  setStatus(renewStatus, window.i18n.t(currentLang, 'renew.deletedSuccess', { name }), 'success');
+  // Same ordering fix as renewMember above: runMemberSearch() unconditionally clears renewStatus, so
+  // it has to run first, not after -- otherwise this message got wiped out immediately.
   await runMemberSearch();
+  setStatus(renewStatus, window.i18n.t(currentLang, 'renew.deletedSuccess', { name }), 'success');
 });
 
 showExpiringButton.addEventListener('click', async () => {
@@ -1587,9 +1639,12 @@ editMemberForm.addEventListener('submit', async (event) => {
     return;
   }
   setStatus(editMemberStatus, window.i18n.t(currentLang, 'renew.updatedSuccess', { name: response.data.name }), 'success');
-  setStatus(renewStatus, window.i18n.t(currentLang, 'renew.updatedSuccess', { name: response.data.name }), 'success');
   editMemberDirty = false;
+  // Same ordering fix as renewMember above: runMemberSearch() unconditionally clears renewStatus (not
+  // editMemberStatus, set separately just above -- that one's unaffected and fine as it was), so it
+  // has to run first, not after.
   await runMemberSearch();
+  setStatus(renewStatus, window.i18n.t(currentLang, 'renew.updatedSuccess', { name: response.data.name }), 'success');
   setTimeout(closeMemberEditor, 700);
 });
 
@@ -1675,7 +1730,7 @@ staffLockRecoverForm.addEventListener('submit', async (event) => {
 });
 
 regenerateRecoveryButton.addEventListener('click', async () => {
-  const currentPin = window.prompt(window.i18n.t(currentLang, 'settings.pin.regeneratePrompt'));
+  const currentPin = await showTextPrompt(window.i18n.t(currentLang, 'settings.pin.regeneratePrompt'), { inputType: 'password', maxLength: 8 });
   if (currentPin === null) return;
   regenerateRecoveryButton.disabled = true;
   const response = await window.gym.regenerateRecoveryCode({ currentPin });

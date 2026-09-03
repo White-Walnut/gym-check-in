@@ -19,6 +19,7 @@ const cs = {
     denied: 'Zamítnuto',
     loading: 'Načítání…',
     cancel: 'Zrušit',
+    ok: 'OK',
     edit: 'Upravit',
     unknownCard: 'Neznámá karta',
     unrecognisedCard: 'Nerozpoznaná karta',
