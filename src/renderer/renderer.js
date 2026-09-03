@@ -187,16 +187,20 @@ let rawScanCaptureFlushTimer = null;
 //
 // Sensitive fields (PIN entry, recovery code) get a stricter rule instead: every scan-classifiable
 // keystroke is prevented from inserting natively, full stop, and is driven entirely by the code below.
-// The very first keystroke of a burst still can't be told apart from a human just starting to type --
-// so rather than either inserting it right away (the leak) or dropping it outright (breaks real PIN
-// entry), it's *held* for FAST_CHAR_GAP_MS: if a fast follow-up keystroke arrives in that window (proof
-// this is actually a card scan), the held keystroke is discarded and never appears at all; if nothing
-// fast follows, it's committed (typed normally) once the hold expires or the moment a slower, clearly-
-// human follow-up keystroke arrives. This trades a sub-100ms delay on every keystroke typed into these
-// specific fields for a hard guarantee that no part of a scan can ever visibly appear in them -- unlike
-// the confirm-then-undo approach this replaced, it doesn't depend on a burst ever reaching
-// MIN_SCAN_LENGTH, so it can't be defeated by a reader whose jitter keeps resetting that count.
-let pendingSensitiveKey = null; // { element, key, timer } | null
+// A first version of this held back only the burst's first (unclassifiable) keystroke and let every
+// later, "confirmed suppressed" one straight through as proof-positive of a scan -- which is exactly
+// backwards for a PIN: a real staff PIN, typed fast and consistently because it's memorized muscle
+// memory, looks *identical* to a scan from pure timing alone (that's the whole burst, not just its
+// first character), so that version silently dropped every digit of a fast-typed PIN, leaving the
+// field empty and Enter submitting nothing.
+//
+// The whole burst is buffered instead, and its fate is decided once, when the burst actually ends
+// (a pause, or Enter), not per keystroke: every character typed into a sensitive field while its
+// burst is still short enough to plausibly be a real PIN for this field is held; if the burst keeps
+// growing past what this field's own maxLength could ever hold, it can only be a scan continuing on
+// past a real PIN's length, and the whole buffer -- not just the excess -- is thrown away, since a
+// real UID's early characters are exactly as unwanted here as its later ones.
+let pendingSensitiveBuffer = null; // { element, keys: string[], timer } | null
 
 function isScanSensitiveField(element) {
   return !!element && (element.type === 'password' || element.id === 'staff-lock-recovery-code');
@@ -211,18 +215,18 @@ function commitSensitiveKey(element, key) {
   element.value += key;
 }
 
-function discardPendingSensitiveKey() {
-  if (!pendingSensitiveKey) return;
-  clearTimeout(pendingSensitiveKey.timer);
-  pendingSensitiveKey = null;
+function discardSensitiveBuffer() {
+  if (!pendingSensitiveBuffer) return;
+  clearTimeout(pendingSensitiveBuffer.timer);
+  pendingSensitiveBuffer = null;
 }
 
-function releasePendingSensitiveKey() {
-  if (!pendingSensitiveKey) return;
-  const { element, key, timer } = pendingSensitiveKey;
+function commitSensitiveBuffer() {
+  if (!pendingSensitiveBuffer) return;
+  const { element, keys, timer } = pendingSensitiveBuffer;
   clearTimeout(timer);
-  pendingSensitiveKey = null;
-  commitSensitiveKey(element, key);
+  pendingSensitiveBuffer = null;
+  keys.forEach((key) => commitSensitiveKey(element, key));
 }
 
 let checkInQueue = [];
@@ -1156,6 +1160,35 @@ function flushRawScanCapture(reason) {
   rawScanCapture = [];
 }
 
+// Belt-and-suspenders alongside the keydown-level event.preventDefault() below: confirmed against real
+// hardware that a real keyboard-wedge reader's keystrokes can still land in a focused sensitive field
+// even with keydown prevented, which a synthetic (if trusted) sendInputEvent()-based test never
+// reproduced -- real OS-originated keyboard input on Windows can apparently reach native text insertion
+// through a path keydown's preventDefault() doesn't reliably cover. beforeinput fires immediately before
+// the DOM value would actually change and is the more direct, spec-recommended event to block insertion
+// with, regardless of exactly which pathway (hardware keyboard, IME, paste) produced it. Sensitive
+// fields never take native insertion at all any more, from any source -- every character that belongs
+// in them arrives exclusively through commitSensitiveKey below. Deletion (Backspace/Delete) is left
+// alone; only inputType values that actually add content ('insert...') are blocked.
+// Counts+logs (throttled to one line per burst, like flushRawScanCapture above) rather than logging
+// per keystroke -- this fires for every character of a scan, up to ~20 in a row. Diagnostic purpose:
+// if a leak is ever reported again, this line's presence or absence in the log says definitively
+// whether beforeinput actually engaged at all, instead of having to guess a third time.
+let sensitiveInputBlockedCount = 0;
+let sensitiveInputBlockFlushTimer = null;
+
+document.addEventListener('beforeinput', (event) => {
+  if (isScanSensitiveField(event.target) && typeof event.inputType === 'string' && event.inputType.startsWith('insert')) {
+    event.preventDefault();
+    sensitiveInputBlockedCount += 1;
+    clearTimeout(sensitiveInputBlockFlushTimer);
+    sensitiveInputBlockFlushTimer = setTimeout(() => {
+      console.error(`[sensitive-field] beforeinput blocked ${sensitiveInputBlockedCount} native insertion attempt(s) on a sensitive field`);
+      sensitiveInputBlockedCount = 0;
+    }, 1500);
+  }
+});
+
 document.addEventListener('keydown', (event) => {
   // No more Escape-closes-admin: the dashboard (single window, or the staff window in dual-screen
   // mode) is a permanent page now, not a dismissable overlay -- see applyWindowRole and closeAdmin.
@@ -1167,12 +1200,23 @@ document.addEventListener('keydown', (event) => {
 
   if (event.key === 'Enter') {
     flushRawScanCapture('Enter');
+    const sensitiveEnterField = isScanSensitiveField(document.activeElement) ? document.activeElement : null;
+    if (sensitiveEnterField) {
+      // Enter here always means "submit the PIN" -- commit whatever's still buffered (a real scan long
+      // enough to matter would already have been discarded entirely by the character branch below,
+      // well before Enter could arrive), then submit the field's form directly. Reported from the
+      // field: Chromium's native implicit-submit-on-Enter wasn't reliably firing for this input at all
+      // (confirmed: not just for a fast-typed PIN, but for ordinary typing too), so this no longer
+      // waits on it -- requestSubmit() is called explicitly instead, the same call every click-driven
+      // unlock in this app already goes through, so it can't depend on whatever native quirk that was.
+      // preventDefault() here just guards against a double submission if that native path *does* fire.
+      commitSensitiveBuffer();
+      event.preventDefault();
+      if (sensitiveEnterField.form) sensitiveEnterField.form.requestSubmit();
+      return;
+    }
     clearTimeout(scanAutoDispatchTimer);
     scanAutoDispatchTimer = null;
-    // A lone held-back keystroke followed immediately by Enter is human intent, not a scan -- a real
-    // scan's 2nd keystroke would already have discarded it (see the character branch below) long
-    // before Enter could ever arrive. Let it through.
-    releasePendingSensitiveKey();
     if (isConfirmedScan(scanState)) {
       event.preventDefault();
       const uid = scanBuffer;
@@ -1196,8 +1240,8 @@ document.addEventListener('keydown', (event) => {
     rawScanCaptureFlushTimer = setTimeout(() => flushRawScanCapture('pause, no Enter seen'), 1500);
     const next = advanceScanState(scanState, gap);
     // Sensitive fields (PIN entry, recovery code) never take the browser's native default action for a
-    // scan-classifiable key -- they're driven entirely by pendingSensitiveKey below instead. See the
-    // comment on pendingSensitiveKey's declaration for why.
+    // scan-classifiable key -- they're driven entirely by pendingSensitiveBuffer below instead. See the
+    // comment on pendingSensitiveBuffer's declaration for why.
     const sensitiveField = isScanSensitiveField(document.activeElement) ? document.activeElement : null;
     if (sensitiveField) event.preventDefault();
 
@@ -1215,21 +1259,36 @@ document.addEventListener('keydown', (event) => {
       clearTimeout(scanAutoDispatchTimer);
       scanAutoDispatchTimer = null;
       if (sensitiveField) {
-        releasePendingSensitiveKey(); // whatever was held from the previous keystroke is now proven human -- let it through
+        commitSensitiveBuffer(); // whatever was buffered from this burst is now proven human -- let it all through
         commitSensitiveKey(sensitiveField, event.key); // ...and so is this one
       }
       scanBuffer = '';
       scanState = next;
       return;
     }
-    if (next.length === 1 && sensitiveField) {
-      // Fresh burst starting -- can't yet tell a human's first keystroke here from a card scan's. Hold
-      // it; a fast follow-up discards it below (proof it was a scan), anything else releases it.
-      pendingSensitiveKey = { element: sensitiveField, key: event.key, timer: setTimeout(releasePendingSensitiveKey, FAST_CHAR_GAP_MS) };
-    }
-    if (next.suppressed) {
+    if (sensitiveField) {
+      if (next.length === 1) {
+        // Fresh burst starting -- buffer it; its fate (commit as real typing, or discard entirely as a
+        // scan) is decided once the burst actually ends, not per keystroke -- see
+        // pendingSensitiveBuffer's own declaration for why that matters here.
+        pendingSensitiveBuffer = { element: sensitiveField, keys: [event.key], timer: setTimeout(commitSensitiveBuffer, FAST_CHAR_GAP_MS) };
+      } else if (pendingSensitiveBuffer && pendingSensitiveBuffer.element === sensitiveField) {
+        clearTimeout(pendingSensitiveBuffer.timer);
+        pendingSensitiveBuffer.keys.push(event.key);
+        const maxLength = sensitiveField.maxLength >= 0 ? sensitiveField.maxLength : Infinity;
+        if (pendingSensitiveBuffer.keys.length > maxLength) {
+          // Already longer than this field could legitimately ever hold as a real PIN -- this can only
+          // be a scan running on past it. Discard the whole buffer, not just the overflow: a real UID's
+          // earlier characters are exactly as unwanted here as its later ones.
+          discardSensitiveBuffer();
+        } else {
+          pendingSensitiveBuffer.timer = setTimeout(commitSensitiveBuffer, FAST_CHAR_GAP_MS);
+        }
+      }
+      // else: the buffer was already discarded earlier this same burst (too long) -- nothing left to
+      // buffer for the rest of it.
+    } else if (next.suppressed) {
       event.preventDefault();
-      if (sensitiveField) discardPendingSensitiveKey(); // now sure this is a scan -- the held-back first keystroke never happened
     }
     scanBuffer = next.length === 1 ? event.key : scanBuffer + event.key;
     scanState = next;

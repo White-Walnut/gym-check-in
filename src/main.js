@@ -701,9 +701,11 @@ async function runSmokeCapture() {
   await captureScreenshot('10-locked.png');
   // Scan-while-PIN-field-focused: reported from the field -- tapping a card while the lock screen's
   // PIN input has focus (which it does by default, see showStaffLockView's own auto-focus) was leaking
-  // scan characters into the PIN box, since a burst's first keystroke can't be classified yet and so
-  // is never suppressed for an ordinary field (see advanceScanState's own comment). Sensitive fields
-  // now hold that first keystroke instead of inserting it -- see pendingSensitiveKey in renderer.js.
+  // scan characters into the PIN box. Sensitive fields now buffer a whole burst and only commit it once
+  // the burst ends, discarding it entirely if it grows past the field's own maxLength (8, here) --
+  // see pendingSensitiveBuffer in renderer.js for the full reasoning, including why this can't reject a
+  // fast burst purely for being confirmed-fast the way every other field does (a memorized, fast-typed
+  // real PIN would look identical to that).
   //
   // executeJavaScript's document.dispatchEvent(new KeyboardEvent(...)), used everywhere else in this
   // script, is deliberately NOT used here: a script-dispatched event is untrusted, and Chromium only
@@ -716,6 +718,24 @@ async function runSmokeCapture() {
   if (!pinFieldFocusedBeforeScan) {
     throw new Error('staffLockPinInput was not focused as expected before the scan-while-locked test');
   }
+  // A real UID (confirmed against actual hardware in the field: 20 characters) is always far longer
+  // than any real PIN this field's maxLength=8 could ever hold, so it reliably crosses the
+  // discard-the-whole-buffer threshold well before it ends -- this doesn't need to be a real member for
+  // that, just long. (A card whose UID happens to be <= 8 characters is a real, accepted gap in this
+  // design -- documented on pendingSensitiveBuffer -- but isn't what any reader seen on this deployment
+  // actually produces.)
+  for (const key of '12345678901234567890') {
+    mainWindow.webContents.sendInputEvent({ type: 'keyDown', keyCode: key });
+    mainWindow.webContents.sendInputEvent({ type: 'char', keyCode: key });
+    mainWindow.webContents.sendInputEvent({ type: 'keyUp', keyCode: key });
+  }
+  await new Promise((resolve) => setTimeout(resolve, 800));
+  const longScanWhileLocked = await mainWindow.webContents.executeJavaScript('staffLockPinInput.value');
+  if (longScanWhileLocked !== '') {
+    throw new Error(`A long (realistic) card UID scanned while the PIN field was focused leaked into it: ${JSON.stringify(longScanWhileLocked)}`);
+  }
+  // And the check-in itself must still work normally in the background regardless -- this fix must
+  // never swallow a genuine scan just because the PIN screen happens to be up.
   for (const key of ['1', '0', '0', '0', '0', '0', '0', '1']) {
     mainWindow.webContents.sendInputEvent({ type: 'keyDown', keyCode: key });
     mainWindow.webContents.sendInputEvent({ type: 'char', keyCode: key });
@@ -723,11 +743,12 @@ async function runSmokeCapture() {
   }
   await new Promise((resolve) => setTimeout(resolve, 800));
   const scanWhileLocked = await mainWindow.webContents.executeJavaScript(
-    "({ pinFieldValue: staffLockPinInput.value, feedUid: activityFeedEntries[0]?.uid, feedAllowed: activityFeedEntries[0]?.allowed })"
+    "({ feedUid: activityFeedEntries[0]?.uid, feedAllowed: activityFeedEntries[0]?.allowed })"
   );
-  if (scanWhileLocked.pinFieldValue !== '' || scanWhileLocked.feedUid !== '10000001' || scanWhileLocked.feedAllowed !== true) {
-    throw new Error(`A card scanned while the PIN field was focused leaked into it or failed to check in: ${JSON.stringify(scanWhileLocked)}`);
+  if (scanWhileLocked.feedUid !== '10000001' || scanWhileLocked.feedAllowed !== true) {
+    throw new Error(`A card scanned while the PIN field was focused failed to check in: ${JSON.stringify(scanWhileLocked)}`);
   }
+  await mainWindow.webContents.executeJavaScript("staffLockPinInput.value = '';"); // this 8-character UID lands in the field per the accepted gap noted above -- clear it before the rest of this script relies on the field being empty
   await captureScreenshot('10c-scan-while-locked.png');
   // Complementary case: real slow human PIN entry (well above FAST_CHAR_GAP_MS between keystrokes)
   // must still land in the field normally -- the hold-and-release mechanism must not eat real typing.
@@ -743,8 +764,26 @@ async function runSmokeCapture() {
     throw new Error(`Genuine slow human typing into the PIN field did not land as expected: ${JSON.stringify(humanPinTyped)}`);
   }
   await mainWindow.webContents.executeJavaScript("staffLockPinInput.value = '';");
-  await mainWindow.webContents.executeJavaScript("staffLockPinInput.value = '1234'; staffLockEnterForm.requestSubmit();");
+  // Enter-key PIN submission: reported from the field -- staff could never unlock with Enter at all,
+  // fast-typed or not, only by clicking Unlock. Root cause turned out to be that Chromium's native
+  // implicit-submit-on-Enter just wasn't reliably firing for this input in this app, so the keydown
+  // handler's Enter branch for a sensitive field now calls the form's requestSubmit() itself instead of
+  // waiting on that native behavior -- see the isScanSensitiveField branch's own comment. Real trusted
+  // keydown/char/keyup for each digit, sent fast enough (near-zero gaps) to also double as the
+  // fast-typed-PIN-looks-like-a-scan case, plus a real trailing Enter, confirms the whole path end to
+  // end: the digits land correctly (commitSensitiveBuffer ran) and Enter actually unlocks.
+  for (const key of ['1', '2', '3', '4']) {
+    mainWindow.webContents.sendInputEvent({ type: 'keyDown', keyCode: key });
+    mainWindow.webContents.sendInputEvent({ type: 'char', keyCode: key });
+    mainWindow.webContents.sendInputEvent({ type: 'keyUp', keyCode: key });
+  }
+  mainWindow.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Return' });
+  mainWindow.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Return' });
   await new Promise((resolve) => setTimeout(resolve, 500));
+  const unlockedViaFastEnter = await mainWindow.webContents.executeJavaScript('staffLockView.hidden && !adminContent.hidden');
+  if (!unlockedViaFastEnter) {
+    throw new Error('Unlock after a fast-typed PIN did not succeed as expected');
+  }
   await captureScreenshot('10b-unlocked-again.png');
 
   // Reader-with-no-Enter-terminator: confirmed against a real reader in the field whose UID sat
