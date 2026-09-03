@@ -8,6 +8,14 @@ be hand-edited; if a version's list looks wrong, the fix belongs in that script,
 An "Unreleased" section, when present, lists commits already on `main` that haven't shipped in a
 release yet -- the next `npm run release` replaces it with that version's own dated entry.
 
+## v1.9.10 -- 2026-09-03
+
+- Fix: PIN field couldn't be submitted with Enter, only by clicking Unlock
+- Fix (for real this time): card scans leaking into the PIN field
+- Fix: card scans while the lock screen's PIN field is focused
+- Fix: known card on Add-member tab was captured instead of checked in
+- Fix the real bug: a reader that never sends Enter never dispatched at all
+
 ## v1.9.9 -- 2026-09-02
 
 - Add raw scan-timing capture -- logs real gaps regardless of any threshold
