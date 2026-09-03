@@ -702,16 +702,25 @@ async function runSmokeCapture() {
   // Scan-while-PIN-field-focused: reported from the field -- tapping a card while the lock screen's
   // PIN input has focus (which it does by default, see showStaffLockView's own auto-focus) was leaking
   // scan characters into the PIN box, since a burst's first keystroke can't be classified yet and so
-  // is never suppressed (see advanceScanState's own comment, and scanFieldSnapshot in renderer.js).
-  // Confirms both halves: the field stays empty, and the check-in itself still happens for real --
-  // this fix must not accidentally swallow a genuine scan just because the PIN screen is up.
+  // is never suppressed for an ordinary field (see advanceScanState's own comment). Sensitive fields
+  // now hold that first keystroke instead of inserting it -- see pendingSensitiveKey in renderer.js.
+  //
+  // executeJavaScript's document.dispatchEvent(new KeyboardEvent(...)), used everywhere else in this
+  // script, is deliberately NOT used here: a script-dispatched event is untrusted, and Chromium only
+  // ever performs its native default action (actually inserting a character into a focused field) for
+  // a trusted, OS-level event -- so that technique can only ever exercise this app's own JS listener,
+  // never the real leak this test exists to catch. webContents.sendInputEvent() below sends genuinely
+  // trusted input, the same as a real keyboard-wedge reader, so this test can actually fail if the fix
+  // regresses.
   const pinFieldFocusedBeforeScan = await mainWindow.webContents.executeJavaScript('document.activeElement === staffLockPinInput');
   if (!pinFieldFocusedBeforeScan) {
     throw new Error('staffLockPinInput was not focused as expected before the scan-while-locked test');
   }
-  await mainWindow.webContents.executeJavaScript(
-    "['1','0','0','0','0','0','0','1'].forEach((k) => document.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true })));"
-  );
+  for (const key of ['1', '0', '0', '0', '0', '0', '0', '1']) {
+    mainWindow.webContents.sendInputEvent({ type: 'keyDown', keyCode: key });
+    mainWindow.webContents.sendInputEvent({ type: 'char', keyCode: key });
+    mainWindow.webContents.sendInputEvent({ type: 'keyUp', keyCode: key });
+  }
   await new Promise((resolve) => setTimeout(resolve, 800));
   const scanWhileLocked = await mainWindow.webContents.executeJavaScript(
     "({ pinFieldValue: staffLockPinInput.value, feedUid: activityFeedEntries[0]?.uid, feedAllowed: activityFeedEntries[0]?.allowed })"
@@ -720,6 +729,20 @@ async function runSmokeCapture() {
     throw new Error(`A card scanned while the PIN field was focused leaked into it or failed to check in: ${JSON.stringify(scanWhileLocked)}`);
   }
   await captureScreenshot('10c-scan-while-locked.png');
+  // Complementary case: real slow human PIN entry (well above FAST_CHAR_GAP_MS between keystrokes)
+  // must still land in the field normally -- the hold-and-release mechanism must not eat real typing.
+  for (const key of ['9', '8', '7', '6']) {
+    mainWindow.webContents.sendInputEvent({ type: 'keyDown', keyCode: key });
+    mainWindow.webContents.sendInputEvent({ type: 'char', keyCode: key });
+    mainWindow.webContents.sendInputEvent({ type: 'keyUp', keyCode: key });
+    await new Promise((resolve) => setTimeout(resolve, 180)); // comfortably above FAST_CHAR_GAP_MS (100ms)
+  }
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  const humanPinTyped = await mainWindow.webContents.executeJavaScript('staffLockPinInput.value');
+  if (humanPinTyped !== '9876') {
+    throw new Error(`Genuine slow human typing into the PIN field did not land as expected: ${JSON.stringify(humanPinTyped)}`);
+  }
+  await mainWindow.webContents.executeJavaScript("staffLockPinInput.value = '';");
   await mainWindow.webContents.executeJavaScript("staffLockPinInput.value = '1234'; staffLockEnterForm.requestSubmit();");
   await new Promise((resolve) => setTimeout(resolve, 500));
   await captureScreenshot('10b-unlocked-again.png');
