@@ -179,6 +179,21 @@ const SCAN_AUTO_DISPATCH_PAUSE_MS = 300;
 let rawScanCapture = [];
 let rawScanCaptureFlushTimer = null;
 
+// A scan's first keystroke can't be classified yet (see advanceScanState's own comment) and so is
+// never suppressed -- it's allowed to cosmetically leak into whatever field has focus, which is fine
+// for an ordinary text field (one stray character, easily noticed) but not for the staff PIN screen: a
+// digit showing up there looks like the lock is malfunctioning and would sit in the box confusing
+// staff before their own real PIN attempt. Rather than blocking every field's first keystroke outright
+// (which would also break genuine human PIN entry, since it can't yet be told apart from a scan),
+// `scanFieldSnapshot` remembers a sensitive field's value from just before an in-progress burst
+// started; once that burst is actually confirmed as a scan, the field is restored to that snapshot,
+// wiping out only what the scan itself leaked and leaving anything the human had already typed intact.
+let scanFieldSnapshot = null; // { element, value } | null
+
+function isScanSensitiveField(element) {
+  return !!element && (element.type === 'password' || element.id === 'staff-lock-recovery-code');
+}
+
 let checkInQueue = [];
 let processingCheckIn = false;
 let lastSubmittedUid = '';
@@ -1123,6 +1138,7 @@ document.addEventListener('keydown', (event) => {
     flushRawScanCapture('Enter');
     clearTimeout(scanAutoDispatchTimer);
     scanAutoDispatchTimer = null;
+    scanFieldSnapshot = null; // burst is resolved one way or another; a confirmed scan already restored its field below
     if (isConfirmedScan(scanState)) {
       event.preventDefault();
       const uid = scanBuffer;
@@ -1158,13 +1174,26 @@ document.addEventListener('keydown', (event) => {
       }
       clearTimeout(scanAutoDispatchTimer);
       scanAutoDispatchTimer = null;
+      scanFieldSnapshot = null; // genuinely human typing after all -- leave the field exactly as they typed it
       scanBuffer = '';
       scanState = next;
       return;
     }
+    if (next.length === 1) {
+      // Fresh burst starting -- this keystroke can't be classified yet and is never suppressed (see
+      // advanceScanState), so it's about to leak into whatever field has focus. Snapshot a sensitive
+      // field's value now, before that happens, so it can be restored once/if this burst is confirmed.
+      const active = document.activeElement;
+      scanFieldSnapshot = isScanSensitiveField(active) ? { element: active, value: active.value } : null;
+    }
     if (next.suppressed) event.preventDefault();
     scanBuffer = next.length === 1 ? event.key : scanBuffer + event.key;
     scanState = next;
+    if (isConfirmedScan(next) && scanFieldSnapshot && scanFieldSnapshot.element === document.activeElement) {
+      // Now sure this is a scan, not human PIN entry -- undo the one leaked keystroke.
+      scanFieldSnapshot.element.value = scanFieldSnapshot.value;
+      scanFieldSnapshot = null;
+    }
     // Re-armed on every fast keystroke, not just once the burst first becomes confirmed: a reader
     // that never sends Enter needs this to keep pushing out while its characters are still arriving,
     // otherwise it would fire mid-scan the moment the burst first reached MIN_SCAN_LENGTH.

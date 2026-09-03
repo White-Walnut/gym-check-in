@@ -699,6 +699,27 @@ async function runSmokeCapture() {
   await mainWindow.webContents.executeJavaScript("adminClose.click()");
   await new Promise((resolve) => setTimeout(resolve, 500));
   await captureScreenshot('10-locked.png');
+  // Scan-while-PIN-field-focused: reported from the field -- tapping a card while the lock screen's
+  // PIN input has focus (which it does by default, see showStaffLockView's own auto-focus) was leaking
+  // scan characters into the PIN box, since a burst's first keystroke can't be classified yet and so
+  // is never suppressed (see advanceScanState's own comment, and scanFieldSnapshot in renderer.js).
+  // Confirms both halves: the field stays empty, and the check-in itself still happens for real --
+  // this fix must not accidentally swallow a genuine scan just because the PIN screen is up.
+  const pinFieldFocusedBeforeScan = await mainWindow.webContents.executeJavaScript('document.activeElement === staffLockPinInput');
+  if (!pinFieldFocusedBeforeScan) {
+    throw new Error('staffLockPinInput was not focused as expected before the scan-while-locked test');
+  }
+  await mainWindow.webContents.executeJavaScript(
+    "['1','0','0','0','0','0','0','1'].forEach((k) => document.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true })));"
+  );
+  await new Promise((resolve) => setTimeout(resolve, 800));
+  const scanWhileLocked = await mainWindow.webContents.executeJavaScript(
+    "({ pinFieldValue: staffLockPinInput.value, feedUid: activityFeedEntries[0]?.uid, feedAllowed: activityFeedEntries[0]?.allowed })"
+  );
+  if (scanWhileLocked.pinFieldValue !== '' || scanWhileLocked.feedUid !== '10000001' || scanWhileLocked.feedAllowed !== true) {
+    throw new Error(`A card scanned while the PIN field was focused leaked into it or failed to check in: ${JSON.stringify(scanWhileLocked)}`);
+  }
+  await captureScreenshot('10c-scan-while-locked.png');
   await mainWindow.webContents.executeJavaScript("staffLockPinInput.value = '1234'; staffLockEnterForm.requestSubmit();");
   await new Promise((resolve) => setTimeout(resolve, 500));
   await captureScreenshot('10b-unlocked-again.png');
