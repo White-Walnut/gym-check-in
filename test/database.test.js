@@ -469,6 +469,25 @@ test('anchor-preserving renewal: a Jan-31 signup does not permanently drift down
   database.close();
 });
 
+test('a long-lapsed monthly renewal re-anchors to today instead of the stale old anchor', () => {
+  const database = new GymDatabase(':memory:');
+  // Signed up on the 1st years ago; membership expired long, long before "today".
+  const member = database.addMember({
+    cardUid: 'LAPSED01', firstName: 'Lapsed', lastName: 'Member',
+    membershipType: 'monthly', validUntil: '2020-02-29'
+  }, new Date('2020-01-01T12:00:00'));
+  assert.equal(database.getMemberById(member.id).billing_anchor_day, 1);
+
+  const current = database.renewMember(member.id, 'monthly', {}, new Date('2026-09-03T12:00:00'));
+  // A full month from today (Sept 3), not truncated down to "day before the 1st" using the stale
+  // anchor -- that bug produced 2026-09-30 (a 27-day period) instead of a real month.
+  assert.equal(current.validUntil, '2026-10-02');
+  // The restart re-anchors going forward too.
+  assert.equal(database.getMemberById(member.id).billing_anchor_day, 3);
+
+  database.close();
+});
+
 test('staff PIN: first-time setup, verification, and change all round-trip', () => {
   const database = new GymDatabase(':memory:');
   assert.equal(database.hasStaffPin(), false);

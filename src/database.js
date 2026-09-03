@@ -836,9 +836,11 @@ class GymDatabase {
           : null;
 
       if (renewalType === 'monthly') {
-        const startDate = member.membership_type === 'monthly' && member.valid_until && member.valid_until >= today
-          ? addDays(member.valid_until, 1)
-          : today;
+        // A renewal is only "contiguous" with the member's existing cycle if their previous period
+        // hadn't already lapsed -- that's the same condition that decides whether the new period
+        // starts the day after the old one ends, or fresh from today.
+        const isContiguousRenewal = member.membership_type === 'monthly' && member.valid_until && member.valid_until >= today;
+        const startDate = isContiguousRenewal ? addDays(member.valid_until, 1) : today;
         const customEndDate = options?.validUntil ? String(options.validUntil) : null;
         if (customEndDate && (!isIsoDate(customEndDate) || customEndDate < startDate)) throw new Error('invalid_date');
 
@@ -846,9 +848,14 @@ class GymDatabase {
         // staff typed as a custom end date. The system's own "+1 month" computation (no custom date)
         // preserves whatever anchor is already on file instead of re-deriving it from startDate --
         // that's what stops a clamped short month from permanently dragging later months down with
-        // it. A staff-chosen custom date always re-anchors to this period's actual start, since it's
-        // a deliberate override of the automatic cycle.
-        const existingAnchor = member.membership_type === 'monthly' ? member.billing_anchor_day : null;
+        // it. But that only makes sense for a genuinely contiguous renewal: if the old period already
+        // lapsed (member.valid_until < today), this is really a fresh restart from today, so the
+        // anchor must be re-derived from startDate too -- otherwise a member who signed up years ago
+        // on, say, the 1st, and renews today after months away, gets a period truncated down to
+        // whatever's left before the 1st instead of a full month from today. A staff-chosen custom
+        // date always re-anchors to this period's actual start either way, since it's a deliberate
+        // override of the automatic cycle.
+        const existingAnchor = isContiguousRenewal ? member.billing_anchor_day : null;
         const anchorDay = (!customEndDate && existingAnchor) ? existingAnchor : Number(startDate.split('-')[2]);
         const validUntil = customEndDate || membershipEndDate(startDate, 1, anchorDay);
         const daysAdded = inclusiveDays(startDate, validUntil);
