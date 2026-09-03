@@ -1716,14 +1716,22 @@ async function applyGymBranding(branding) {
   const logoUrl = branding?.logoPath ? await window.gym.getPhotoUrl(branding.logoPath) : null;
   const name = branding?.name || null;
 
-  brandMarkDefault.hidden = Boolean(logoUrl);
-  brandMarkLogo.hidden = !logoUrl;
-  // Reported from the field: a real uploaded logo (its own colors/background, not necessarily
-  // transparent) forced behind the built-in accent-colored backdrop looked like two clashing marks
-  // stacked on each other. The default icon's own backdrop only makes sense for the default icon --
-  // a custom logo gets a plain neutral one instead, since it's meant to be self-contained already.
-  brandMark.classList.toggle('has-custom-logo', Boolean(logoUrl));
-  if (logoUrl) brandMarkLogo.src = logoUrl;
+  // The kiosk window (the customer-facing display, in dual-screen mode) never shows a custom logo,
+  // only the default mark -- reported from the field as rendering wrong there specifically (correct
+  // everywhere else, including a fresh from-scratch render of the exact same file on this end, so the
+  // cause wasn't pinned down) and this was asked for directly as the practical fix instead of
+  // continuing to chase it blind. Every other window still shows it normally.
+  const showLogoOnThisWindow = logoUrl && appInfo.windowRole !== 'kiosk';
+  brandMarkDefault.hidden = Boolean(showLogoOnThisWindow);
+  brandMarkLogo.hidden = !showLogoOnThisWindow;
+  // A real uploaded logo (its own colors/background, not necessarily transparent) forced behind the
+  // built-in accent-colored backdrop looked like two clashing marks stacked on each other. The
+  // default icon's own backdrop only makes sense for the default icon -- a custom logo gets a plain
+  // neutral one instead, since it's meant to be self-contained already.
+  brandMark.classList.toggle('has-custom-logo', Boolean(showLogoOnThisWindow));
+  if (showLogoOnThisWindow) brandMarkLogo.src = logoUrl;
+  // The name text itself was never reported as broken -- only the logo graphic -- so it still shows
+  // on every window including kiosk, same as before.
   brandNameText.textContent = name || 'GYM CHECK-IN';
 
   // The admin header and lock screen only show this extra row at all once something's actually
@@ -2157,8 +2165,10 @@ window.gym.getAppInfo().then((info) => {
   // So "did the fix actually ship, and did this PC actually get it" is a glance at Settings instead
   // of a guess -- see the app-info handler in main.js for where this comes from (app.getVersion()).
   if (appInfo.version) currentVersionDisplay.textContent = `v${appInfo.version}`;
+  // Sequenced after applyWindowRole (not an independent promise chain) specifically because
+  // applyGymBranding itself now reads appInfo.windowRole (to skip the logo on a kiosk window) -- it
+  // has to be resolved first, not still sitting at its 'single' default from a race between the two.
+  // Every window (kiosk, staff, single) needs its own call, including the lock screen, before/without
+  // ever unlocking.
+  window.gym.getGymBranding().then(applyGymBranding);
 });
-
-// Independent of the getAppInfo bootstrap above -- every window (kiosk, staff, single) needs its own
-// call, including the lock screen, before/without ever unlocking.
-window.gym.getGymBranding().then(applyGymBranding);
