@@ -1266,6 +1266,15 @@ app.whenReady().then(async () => {
     assertUnlocked();
     gymDatabase.setLanguage(language);
     currentLanguage = language;
+    // Reported from the field: changing the language mid-session never reached the kiosk window in
+    // dual-screen mode (a separate renderer process with its own currentLang, only ever read once at
+    // its own bootstrap) -- staff had to restart the whole app for it to show there. Same
+    // for-every-window broadcast pattern as checkin-glance-update above; harmless on whichever window
+    // actually made this request too, since its listener no-ops once its own currentLang already
+    // matches (see the immediate local apply in renderer.js's setLanguage()).
+    for (const win of [kioskWindow, staffWindow]) {
+      if (win && !win.isDestroyed()) win.webContents.send('language-changed', language);
+    }
   }));
 
   ipcMain.handle('get-dual-screen-enabled', () => dualScreenEnabled);

@@ -74,5 +74,14 @@ contextBridge.exposeInMainWorld('gym', {
     const listener = (_event, result) => callback(result);
     ipcRenderer.on('checkin-glance-update', listener);
     return () => ipcRenderer.removeListener('checkin-glance-update', listener);
+  },
+
+  // Dual-screen only in practice (a single window already applies its own change immediately) --
+  // pushed to every window whenever any one of them changes the language, so the kiosk window picks
+  // it up without needing a restart.
+  onLanguageChanged: (callback) => {
+    const listener = (_event, language) => callback(language);
+    ipcRenderer.on('language-changed', listener);
+    return () => ipcRenderer.removeListener('language-changed', listener);
   }
 });

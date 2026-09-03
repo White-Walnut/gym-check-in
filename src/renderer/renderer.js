@@ -139,13 +139,16 @@ const choosePhotoFileButton = document.querySelector('#choose-photo-file-button'
 const cancelPhotoChoiceButton = document.querySelector('#cancel-photo-choice-button');
 const removePhotoButton = document.querySelector('#remove-photo-button');
 
+const brandMark = document.querySelector('.brand-mark');
 const brandMarkDefault = document.querySelector('#brand-mark-default');
 const brandMarkLogo = document.querySelector('#brand-mark-logo');
 const brandNameText = document.querySelector('#brand-name-text');
 const adminBrand = document.querySelector('#admin-brand');
+const adminBrandMark = adminBrand.querySelector('.header-brand-mark');
 const adminBrandLogo = document.querySelector('#admin-brand-logo');
 const adminBrandName = document.querySelector('#admin-brand-name');
 const staffLockBrand = document.querySelector('#staff-lock-brand');
+const staffLockBrandMark = staffLockBrand.querySelector('.header-brand-mark');
 const staffLockBrandLogo = document.querySelector('#staff-lock-brand-logo');
 const staffLockBrandName = document.querySelector('#staff-lock-brand-name');
 const brandingLogoPreview = document.querySelector('#branding-logo-preview');
@@ -1715,6 +1718,11 @@ async function applyGymBranding(branding) {
 
   brandMarkDefault.hidden = Boolean(logoUrl);
   brandMarkLogo.hidden = !logoUrl;
+  // Reported from the field: a real uploaded logo (its own colors/background, not necessarily
+  // transparent) forced behind the built-in accent-colored backdrop looked like two clashing marks
+  // stacked on each other. The default icon's own backdrop only makes sense for the default icon --
+  // a custom logo gets a plain neutral one instead, since it's meant to be self-contained already.
+  brandMark.classList.toggle('has-custom-logo', Boolean(logoUrl));
   if (logoUrl) brandMarkLogo.src = logoUrl;
   brandNameText.textContent = name || 'GYM CHECK-IN';
 
@@ -1725,6 +1733,8 @@ async function applyGymBranding(branding) {
   staffLockBrand.hidden = !hasCustomBranding;
   adminBrandLogo.hidden = !logoUrl;
   staffLockBrandLogo.hidden = !logoUrl;
+  adminBrandMark.classList.toggle('has-custom-logo', Boolean(logoUrl));
+  staffLockBrandMark.classList.toggle('has-custom-logo', Boolean(logoUrl));
   if (logoUrl) {
     adminBrandLogo.src = logoUrl;
     staffLockBrandLogo.src = logoUrl;
@@ -1861,12 +1871,16 @@ function applyLanguageChoice(lang) {
 // history results -- those hold whatever the last real fetch returned, and re-rendering an empty
 // starting state here would stomp their own "Loading…" placeholder before it's ever had a chance to
 // load; they simply pick up the new language next time staff searches or reopens that tab.
-async function setLanguage(lang) {
+function applyLanguageLocally(lang) {
   currentLang = lang;
   applyLanguageChoice(lang);
   window.i18n.applyTranslations(lang);
   updateClock();
   renderActivityFeed();
+}
+
+async function setLanguage(lang) {
+  applyLanguageLocally(lang);
   const response = await window.gym.setLanguage(lang);
   if (!response.ok) {
     if (response.error === 'not_authorized') handleUnauthorized();
@@ -1878,6 +1892,14 @@ languageChoiceButtons.forEach((button) => {
   button.addEventListener('click', () => {
     if (button.dataset.languageChoice !== currentLang) setLanguage(button.dataset.languageChoice);
   });
+});
+
+// Dual-screen: the window staff actually changed the language in already applied it locally above,
+// before main.js's set-language IPC call even resolves -- so by the time this broadcast reaches that
+// same window, its currentLang already matches and this is a harmless no-op. The other window (kiosk
+// or staff, whichever didn't make the change) is what this is actually for.
+window.gym.onLanguageChanged((lang) => {
+  if (lang !== currentLang) applyLanguageLocally(lang);
 });
 
 // --- Scan method (card reader vs barcode scanner) -----------------------------------------------
