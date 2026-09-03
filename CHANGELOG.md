@@ -8,6 +8,11 @@ be hand-edited; if a version's list looks wrong, the fix belongs in that script,
 An "Unreleased" section, when present, lists commits already on `main` that haven't shipped in a
 release yet -- the next `npm run release` replaces it with that version's own dated entry.
 
+## v1.9.12 -- 2026-09-03
+
+- Fix: +1 month/+10 passes buttons crashed -- window.prompt() unsupported
+- Add smoke coverage for delete-then-add-member (no bug found yet)
+
 ## v1.9.11 -- 2026-09-03
 
 - Redesign the admin/management side: rows not cards, calmer weight
