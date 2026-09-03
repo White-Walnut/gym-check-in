@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('gym', {
   getRecentCheckIns: () => ipcRenderer.invoke('recent-check-ins'),
   searchCheckIns: (filters) => ipcRenderer.invoke('search-check-ins', filters),
   exportCheckInsCsv: (filters) => ipcRenderer.invoke('export-check-ins-csv', filters),
+  searchPayments: (filters) => ipcRenderer.invoke('search-payments', filters),
+  exportPaymentsCsv: (filters) => ipcRenderer.invoke('export-payments-csv', filters),
   getAppInfo: () => ipcRenderer.invoke('app-info'),
   getPhotoUrl: (photoPath) => ipcRenderer.invoke('photo-url', photoPath),
 
@@ -48,6 +50,8 @@ contextBridge.exposeInMainWorld('gym', {
   setDualScreenEnabled: (enabled) => ipcRenderer.invoke('set-dual-screen-enabled', enabled),
   getCheckinRetentionDays: () => ipcRenderer.invoke('get-checkin-retention-days'),
   setCheckinRetentionDays: (days) => ipcRenderer.invoke('set-checkin-retention-days', days),
+  getPunchcardCooldownHours: () => ipcRenderer.invoke('get-punchcard-cooldown-hours'),
+  setPunchcardCooldownHours: (hours) => ipcRenderer.invoke('set-punchcard-cooldown-hours', hours),
   exportMemberData: (input) => ipcRenderer.invoke('export-member-data', input),
 
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),

@@ -161,6 +161,7 @@
             <button class="admin-tab is-active" type="button" data-admin-tab="add" data-i18n="admin.tabs.add">Add new member</button>
             <button class="admin-tab" type="button" data-admin-tab="renew" data-i18n="admin.tabs.renew">Renew or prolong</button>
             <button class="admin-tab" type="button" data-admin-tab="history" data-i18n="admin.tabs.history">Check-in history</button>
+            <button class="admin-tab" type="button" data-admin-tab="payments" data-i18n="admin.tabs.payments">Payments</button>
             <button class="admin-tab" type="button" data-admin-tab="settings" data-i18n="admin.tabs.settings">Settings</button>
           </nav>
 
@@ -296,6 +297,26 @@
               <button id="history-export-button" class="text-button" type="button" data-i18n="history.exportCsv">Export CSV…</button>
             </div>
             <p id="history-status" class="form-status" role="status"></p>
+          </div>
+
+          <div id="admin-payments" class="admin-section" hidden>
+            <div class="history-filters">
+              <label><span data-i18n="payments.memberName">Member name</span><input id="payments-query" autocomplete="off" data-i18n-placeholder="payments.searchPlaceholder" placeholder="Search…" /></label>
+              <label><span data-i18n="payments.from">From</span><input id="payments-from-date" type="date" /></label>
+              <label><span data-i18n="payments.to">To</span><input id="payments-to-date" type="date" /></label>
+              <button id="payments-filter-button" class="renew-button" type="button" data-i18n="payments.filter">Filter</button>
+              <button id="payments-clear-button" class="text-button" type="button" data-i18n="payments.clear">Clear</button>
+            </div>
+
+            <div class="member-list-heading"><strong data-i18n="payments.heading">Payments</strong><span id="payments-total"></span></div>
+            <div id="payments-results" class="search-results">
+              <div class="empty-search" data-i18n="payments.loading">Loading payments…</div>
+            </div>
+            <div class="history-actions">
+              <button id="payments-load-more-button" class="text-button" type="button" hidden data-i18n="history.loadMore">Load more</button>
+              <button id="payments-export-button" class="text-button" type="button" data-i18n="history.exportCsv">Export CSV…</button>
+            </div>
+            <p id="payments-status" class="form-status" role="status"></p>
           </div>
 
           <div id="admin-settings" class="admin-section" hidden>
@@ -459,6 +480,22 @@
                 <button id="save-retention-button" class="text-button" type="button" data-i18n="settings.retention.save">Save</button>
               </div>
               <p id="retention-status" class="form-status" role="status"></p>
+            </div>
+
+            <div class="settings-block">
+              <h3 data-i18n="settings.cooldown.heading">Punch-card re-entry window</h3>
+              <p class="settings-hint" data-i18n="settings.cooldown.hint">
+                A card tapped again within this window checks the member back in without using
+                another pass -- protects against an accidental double-tap. Doesn't apply to monthly
+                members, who don't use passes. Set to 0 to turn this off.
+              </p>
+              <div class="expiring-row">
+                <span data-i18n="settings.cooldown.noChargeWithin">No extra pass charged within</span>
+                <input id="cooldown-hours-input" type="number" min="0" max="72" />
+                <span data-i18n="settings.cooldown.hours">hours</span>
+                <button id="save-cooldown-button" class="text-button" type="button" data-i18n="settings.cooldown.save">Save</button>
+              </div>
+              <p id="cooldown-status" class="form-status" role="status"></p>
             </div>
 
             <div class="settings-block">

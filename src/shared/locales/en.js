@@ -75,7 +75,7 @@ const en = {
     lockAriaLabel: 'Lock and return to the PIN screen',
     lockTitle: 'Lock',
     lockLabel: 'Lock',
-    tabs: { add: 'Add new member', renew: 'Renew or prolong', history: 'Check-in history', settings: 'Settings' }
+    tabs: { add: 'Add new member', renew: 'Renew or prolong', history: 'Check-in history', payments: 'Payments', settings: 'Settings' }
   },
 
   staffLock: {
@@ -234,6 +234,25 @@ const en = {
     exportedOk: 'Exported {count} row(s) to {path}.'
   },
 
+  payments: {
+    memberName: 'Member name',
+    searchPlaceholder: 'Search…',
+    from: 'From',
+    to: 'To',
+    filter: 'Filter',
+    clear: 'Clear',
+    heading: 'Payments',
+    loading: 'Loading payments…',
+    exporting: 'Exporting…',
+    noMatches: 'No payments match those filters.',
+    totalShown: 'Total: {amount} Kč ({count} shown)',
+    exportedTruncated: 'Exported the most recent {count} matching rows — narrow the date range to get everything older.',
+    exportedOk: 'Exported {count} row(s) to {path}.',
+    eventSignup: 'New member',
+    eventRenewal: 'Renewal',
+    rowDescription: '{event} · {plan}'
+  },
+
   settings: {
     branding: {
       heading: 'Gym branding',
@@ -331,6 +350,16 @@ const en = {
       save: 'Save',
       saved: 'Saved. Takes effect from the next launch onward.'
     },
+    cooldown: {
+      heading: 'Punch-card re-entry window',
+      hint: "A card tapped again within this window checks the member back in without using another "
+        + "pass -- protects against an accidental double-tap. Doesn't apply to monthly members, who "
+        + "don't use passes. Set to 0 to turn this off.",
+      noChargeWithin: 'No extra pass charged within',
+      hours: 'hours',
+      save: 'Save',
+      saved: 'Saved. Applies to every check-in from now on.'
+    },
     updates: {
       heading: 'Updates',
       currentVersion: 'Currently running:',
@@ -380,6 +409,7 @@ const en = {
     reasons: {
       active: { eyebrow: 'CHECK-IN APPROVED', message: 'Welcome in. Have a good session.' },
       punchcard: { eyebrow: 'PASS APPROVED', message: '' },
+      punchcard_recent: { eyebrow: 'WELCOME BACK', message: "Already checked in recently -- no extra pass used." },
       expired: { eyebrow: 'MEMBERSHIP EXPIRED', message: 'Please renew at reception before entering.' },
       no_passes: { eyebrow: 'NO PASSES REMAINING', message: 'Please renew the punch card before entering.' },
       frozen: { eyebrow: 'MEMBERSHIP FROZEN', message: 'Please speak with reception before entering.' },
@@ -426,6 +456,7 @@ const en = {
     invalid_amount: 'Enter a valid amount, or leave it blank.',
     invalid_photo: 'Choose a JPG, PNG, or WEBP image under 8MB.',
     invalid_retention_days: 'Enter a whole number of days, 1 or more.',
+    invalid_cooldown_hours: 'Enter a whole number of hours, 0 or more.',
     operation_failed: 'The change could not be saved. Try again.',
     no_log_yet: "Nothing has been logged yet -- there's no file to export."
   },
@@ -442,6 +473,7 @@ const en = {
     },
     dialogs: {
       exportHistoryTitle: 'Export check-in history',
+      exportPaymentsTitle: 'Export payments',
       exportMemberDataTitle: 'Export member data',
       exportBackupTitle: 'Export database backup',
       exportLogTitle: 'Export log file',
@@ -458,7 +490,11 @@ const en = {
       name: 'Name',
       cardUid: 'Card UID',
       outcome: 'Outcome',
-      reason: 'Reason'
+      reason: 'Reason',
+      date: 'Date',
+      eventType: 'Type',
+      membershipType: 'Plan',
+      amount: 'Amount (Kč)'
     }
   }
 };

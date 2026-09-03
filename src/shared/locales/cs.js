@@ -68,7 +68,7 @@ const cs = {
     lockAriaLabel: 'Uzamknout a vrátit se na obrazovku PIN',
     lockTitle: 'Uzamknout',
     lockLabel: 'Uzamknout',
-    tabs: { add: 'Přidat nového člena', renew: 'Obnovit / prodloužit', history: 'Historie příchodů', settings: 'Nastavení' }
+    tabs: { add: 'Přidat nového člena', renew: 'Obnovit / prodloužit', history: 'Historie příchodů', payments: 'Platby', settings: 'Nastavení' }
   },
 
   staffLock: {
@@ -111,7 +111,7 @@ const cs = {
     membershipLegend: 'Členství',
     monthlyTitle: 'Měsíční',
     monthlyHint: 'Přístup do pevného data',
-    punchcardTitle: 'Permanentka',
+    punchcardTitle: 'Vstupová',
     punchcardHint: 'Za každý vstup se odečte jeden vstup',
     validUntil: 'Platnost do',
     startingPasses: 'Počáteční počet vstupů',
@@ -145,10 +145,10 @@ const cs = {
     plusOneMonth: '+1 měsíc',
     plusTenPasses: '+10 vstupů',
     customDateButton: 'Vlastní datum',
-    membershipDescriptionPunchcard: 'Permanentka · zbývá {count} {unit} · UID {uid}',
+    membershipDescriptionPunchcard: 'Vstupová · zbývá {count} {unit} · UID {uid}',
     membershipDescriptionMonthly: 'Měsíční · platnost do {date} · UID {uid}',
     renewedMonthly: 'Měsíční přístup prodloužen do {date}.',
-    renewedPunchcard: 'Permanentka nyní obsahuje {count} {unit}.',
+    renewedPunchcard: 'Vstupová nyní obsahuje {count} {unit}.',
     renewResult: '{name}: {change}',
     updatedSuccess: '{name} aktualizován(a).',
     deletedSuccess: '{name} byl(a) odstraněn(a).'
@@ -179,7 +179,7 @@ const cs = {
     statusCancelled: 'Zrušeno',
     membership: 'Členství',
     membershipMonthly: 'Měsíční',
-    membershipPunchcard: 'Permanentka',
+    membershipPunchcard: 'Vstupová',
     customEndDate: 'Vlastní konec platnosti',
     entriesRemaining: 'Zbývající vstupy',
     amountPaid: 'Zaplaceno při této návštěvě (Kč)',
@@ -222,6 +222,25 @@ const cs = {
     shownCount: 'Zobrazeno: {count}',
     exportedTruncated: 'Exportováno posledních {count} odpovídajících řádků — zúžte rozsah dat pro získání starších záznamů.',
     exportedOk: 'Exportováno {count} řádků do {path}.'
+  },
+
+  payments: {
+    memberName: 'Jméno člena',
+    searchPlaceholder: 'Hledat…',
+    from: 'Od',
+    to: 'Do',
+    filter: 'Filtrovat',
+    clear: 'Vymazat',
+    heading: 'Platby',
+    loading: 'Načítání plateb…',
+    exporting: 'Exportuji…',
+    noMatches: 'Žádné platby neodpovídají zadaným filtrům.',
+    totalShown: 'Celkem: {amount} Kč (zobrazeno {count})',
+    exportedTruncated: 'Exportováno posledních {count} odpovídajících řádků — zúžte rozsah dat pro získání starších záznamů.',
+    exportedOk: 'Exportováno {count} řádků do {path}.',
+    eventSignup: 'Nový člen',
+    eventRenewal: 'Obnovení',
+    rowDescription: '{event} · {plan}'
   },
 
   settings: {
@@ -319,6 +338,16 @@ const cs = {
       save: 'Uložit',
       saved: 'Uloženo. Projeví se od dalšího spuštění.'
     },
+    cooldown: {
+      heading: 'Okno opětovného vstupu',
+      hint: 'Přiložení karty v tomto okně znovu odbaví člena bez odečtení dalšího vstupu -- chrání '
+        + 'proti nechtěnému dvojímu přiložení. Netýká se měsíčních členství, která vstupy nepoužívají. '
+        + 'Nastavením na 0 tuto funkci vypnete.',
+      noChargeWithin: 'Bez odečtení vstupu do',
+      hours: 'hodin',
+      save: 'Uložit',
+      saved: 'Uloženo. Platí od nynějška pro každý příchod.'
+    },
     updates: {
       heading: 'Aktualizace',
       currentVersion: 'Aktuálně spuštěná verze:',
@@ -360,7 +389,7 @@ const cs = {
   },
 
   checkin: {
-    pillPunchcard: 'Permanentka · zbývá {count}',
+    pillPunchcard: 'Vstupová · zbývá {count}',
     pillExpired: 'Měsíční · vypršelo {date}',
     pillValidUntil: 'Měsíční · platnost do {date}',
     pillUidCaptured: 'UID {uid}',
@@ -370,6 +399,7 @@ const cs = {
     reasons: {
       active: { eyebrow: 'PŘÍCHOD SCHVÁLEN', message: 'Vítejte. Přejeme dobrý trénink.' },
       punchcard: { eyebrow: 'VSTUP SCHVÁLEN', message: '' },
+      punchcard_recent: { eyebrow: 'VÍTEJTE ZPĚT', message: 'Nedávno jste již byli odbaveni -- žádný další vstup nebyl odečten.' },
       expired: { eyebrow: 'ČLENSTVÍ VYPRŠELO', message: 'Před vstupem prosím obnovte členství na recepci.' },
       no_passes: { eyebrow: 'ŽÁDNÉ ZBÝVAJÍCÍ VSTUPY', message: 'Před vstupem prosím obnovte permanentku.' },
       frozen: { eyebrow: 'ČLENSTVÍ POZASTAVENO', message: 'Před vstupem se prosím obraťte na recepci.' },
@@ -414,6 +444,7 @@ const cs = {
     invalid_amount: 'Zadejte platnou částku, nebo pole ponechte prázdné.',
     invalid_photo: 'Vyberte obrázek JPG, PNG nebo WEBP do 8 MB.',
     invalid_retention_days: 'Zadejte celé číslo dní, 1 nebo více.',
+    invalid_cooldown_hours: 'Zadejte celé číslo hodin, 0 nebo více.',
     operation_failed: 'Změnu se nepodařilo uložit. Zkuste to znovu.',
     no_log_yet: 'Zatím nebylo nic zaznamenáno -- není co exportovat.'
   },
@@ -427,6 +458,7 @@ const cs = {
     },
     dialogs: {
       exportHistoryTitle: 'Export historie příchodů',
+      exportPaymentsTitle: 'Export plateb',
       exportMemberDataTitle: 'Export dat člena',
       exportBackupTitle: 'Export zálohy databáze',
       exportLogTitle: 'Export logu',
@@ -443,7 +475,11 @@ const cs = {
       name: 'Jméno',
       cardUid: 'UID karty',
       outcome: 'Výsledek',
-      reason: 'Důvod'
+      reason: 'Důvod',
+      date: 'Datum',
+      eventType: 'Typ',
+      membershipType: 'Plán',
+      amount: 'Částka (Kč)'
     }
   }
 };

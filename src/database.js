@@ -518,6 +518,30 @@ class GymDatabase {
     `).run(String(value));
   }
 
+  // --- Punch-card re-entry cooldown -----------------------------------------------------------
+  // Only matters for punch cards, not monthly passes: a monthly member tapping in twice in one day
+  // costs nothing (unlimited access within their paid period either way), but a punch card charges
+  // one pass per scan -- so an accidental second tap (leaving and immediately walking back in,
+  // someone bumping the reader, a member forgetting they already tapped) would silently burn a
+  // second pass for what was really one visit. Defaults to 3 hours: long enough to absorb an
+  // accidental re-tap, short enough to still credit a genuine two-a-day gym-goer (morning + evening)
+  // as the two separate visits they actually are, which a longer window (6+ hours) would wrongly
+  // collapse into one.
+
+  getPunchcardCooldownHours() {
+    const value = this.db.prepare("SELECT value FROM app_meta WHERE key = 'punchcard_cooldown_hours'").get()?.value;
+    return value === undefined ? 3 : Number(value);
+  }
+
+  setPunchcardCooldownHours(hours) {
+    const value = Number(hours);
+    if (!Number.isInteger(value) || value < 0) throw new Error('invalid_cooldown_hours');
+    this.db.prepare(`
+      INSERT INTO app_meta (key, value) VALUES ('punchcard_cooldown_hours', ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    `).run(String(value));
+  }
+
   // Deletes check_ins older than the configured retention window. Returns the number of rows
   // removed. Safe to call on every launch -- a no-op when nothing has aged out yet.
   purgeOldCheckIns(now = new Date()) {
@@ -554,7 +578,7 @@ class GymDatabase {
     return this.transaction(() => {
       const member = this.getMemberByUid(uid);
       if (!member) {
-        this.recordCheckIn(null, uid, false, 'unknown_card');
+        this.recordCheckIn(null, uid, false, 'unknown_card', now);
         return { allowed: false, reason: 'unknown_card', uid };
       }
 
@@ -577,19 +601,35 @@ class GymDatabase {
       }
 
       if (allowed && member.membership_type === 'punchcard') {
-        const update = this.db.prepare(`
-          UPDATE members SET passes_remaining = passes_remaining - 1, updated_at = CURRENT_TIMESTAMP
-          WHERE id = ? AND passes_remaining > 0
-        `).run(member.id);
-        if (update.changes !== 1) {
-          allowed = false;
-          reason = 'no_passes';
+        const cooldownHours = this.getPunchcardCooldownHours();
+        // Only a genuine PRIOR successful punch-card entry re-arms this -- a member who was denied
+        // (frozen, cancelled, no passes) last time around gets evaluated fresh, not silently let in
+        // just because they tapped again recently. SQLite's own CURRENT_TIMESTAMP default (what
+        // recordCheckIn's checked_in_at actually holds) is UTC 'YYYY-MM-DD HH:MM:SS'; matching that
+        // format exactly here keeps this a plain string comparison, not a timezone-sensitive parse.
+        const cooldownActive = cooldownHours > 0 && this.db.prepare(`
+          SELECT 1 FROM check_ins
+          WHERE member_id = ? AND allowed = 1 AND reason IN ('punchcard', 'punchcard_recent') AND checked_in_at > ?
+          LIMIT 1
+        `).get(member.id, new Date(now.getTime() - cooldownHours * 3600 * 1000).toISOString().slice(0, 19).replace('T', ' '));
+
+        if (cooldownActive) {
+          reason = 'punchcard_recent'; // let back in, but no pass charged for what's the same visit
         } else {
-          member.passes_remaining -= 1;
+          const update = this.db.prepare(`
+            UPDATE members SET passes_remaining = passes_remaining - 1, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND passes_remaining > 0
+          `).run(member.id);
+          if (update.changes !== 1) {
+            allowed = false;
+            reason = 'no_passes';
+          } else {
+            member.passes_remaining -= 1;
+          }
         }
       }
 
-      this.recordCheckIn(member.id, uid, allowed, reason);
+      this.recordCheckIn(member.id, uid, allowed, reason, now);
       return this.formatCheckInResult(member, uid, allowed, reason);
     });
   }
@@ -887,10 +927,15 @@ class GymDatabase {
     return { allowed, reason, uid, member: this.formatMember(member) };
   }
 
-  recordCheckIn(memberId, uid, allowed, reason) {
+  // checked_in_at is set explicitly from `now` (formatted to match SQLite's own CURRENT_TIMESTAMP
+  // default exactly: UTC 'YYYY-MM-DD HH:MM:SS') rather than left to that default, so it's actually
+  // consistent with whatever `now` checkIn() itself used for everything else -- the punch-card
+  // cooldown check above compares against real stored checked_in_at values, and a test passing a
+  // fake `now` would otherwise be comparing that fake cutoff against unrelated real-wall-clock rows.
+  recordCheckIn(memberId, uid, allowed, reason, now = new Date()) {
     this.db.prepare(`
-      INSERT INTO check_ins (member_id, card_uid, allowed, reason) VALUES (?, ?, ?, ?)
-    `).run(memberId, uid, allowed ? 1 : 0, reason);
+      INSERT INTO check_ins (member_id, card_uid, allowed, reason, checked_in_at) VALUES (?, ?, ?, ?, ?)
+    `).run(memberId, uid, allowed ? 1 : 0, reason, now.toISOString().slice(0, 19).replace('T', ' '));
   }
 
   recentCheckIns(limit = 6) {
@@ -937,6 +982,45 @@ class GymDatabase {
       ${where}
       ORDER BY c.id DESC LIMIT ? OFFSET ?
     `).all(...params, safeLimit, safeOffset).map((row) => ({ ...row, allowed: Boolean(row.allowed) }));
+  }
+
+  // Filterable list of actual payments (signups/renewals where a real amount was entered) for the
+  // staff Payments tab (and its CSV export), plus the total for whatever filter is applied -- the
+  // amount paid was already being captured at signup/renewal, but nothing anywhere let staff see it
+  // again afterward. Only rows with a real amount_cents show here; a renewal done without entering
+  // one (the amount prompt can always be skipped) isn't a "payment" to list. A deleted member's past
+  // payments still show under their anonymized placeholder name, same reasoning as searchCheckIns.
+  searchPayments({ query = '', fromDate = '', toDate = '', limit = 100, offset = 0 } = {}) {
+    const clauses = ['s.amount_cents IS NOT NULL'];
+    const params = [];
+    const trimmedQuery = String(query || '').trim();
+    if (trimmedQuery) {
+      clauses.push('(m.first_name || \' \' || m.last_name) LIKE ?');
+      params.push(`%${trimmedQuery}%`);
+    }
+    if (fromDate) {
+      clauses.push('date(s.created_at) >= date(?)');
+      params.push(fromDate);
+    }
+    if (toDate) {
+      clauses.push('date(s.created_at) <= date(?)');
+      params.push(toDate);
+    }
+    const where = `WHERE ${clauses.join(' AND ')}`;
+    const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 5000);
+    const safeOffset = Math.max(Number(offset) || 0, 0);
+    const rows = this.db.prepare(`
+      SELECT s.id, s.created_at AS createdAt, s.event_type AS eventType,
+             s.membership_type AS membershipType, s.amount_cents AS amountCents,
+             m.first_name || ' ' || m.last_name AS name
+      FROM subscriptions s JOIN members m ON m.id = s.member_id
+      ${where}
+      ORDER BY s.id DESC LIMIT ? OFFSET ?
+    `).all(...params, safeLimit, safeOffset);
+    const { total } = this.db.prepare(`
+      SELECT COALESCE(SUM(s.amount_cents), 0) AS total FROM subscriptions s JOIN members m ON m.id = s.member_id ${where}
+    `).get(...params);
+    return { rows, totalCents: total };
   }
 
   transaction(work) {

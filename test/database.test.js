@@ -94,9 +94,13 @@ test('punchcard check-ins decrement once and deny entry at zero', () => {
     VALUES (?, ?, ?, ?, ?, ?)
   `).run('PUNCH10', 'Punch', 'Member', 'active', 'punchcard', 2);
 
-  const first = database.checkIn('PUNCH10');
-  const second = database.checkIn('PUNCH10');
-  const third = database.checkIn('PUNCH10');
+  // Spaced well past the default 3-hour re-entry cooldown (see the next test for that behavior on
+  // its own) -- this test is specifically about decrementing/zero-denial, not the cooldown.
+  const base = new Date('2026-01-01T09:00:00Z');
+  const hoursLater = (hours) => new Date(base.getTime() + hours * 3600 * 1000);
+  const first = database.checkIn('PUNCH10', base);
+  const second = database.checkIn('PUNCH10', hoursLater(4));
+  const third = database.checkIn('PUNCH10', hoursLater(8));
   assert.equal(first.allowed, true);
   assert.equal(first.member.passesRemaining, 1);
   assert.equal(second.allowed, true);
@@ -104,6 +108,84 @@ test('punchcard check-ins decrement once and deny entry at zero', () => {
   assert.equal(third.allowed, false);
   assert.equal(third.reason, 'no_passes');
   assert.equal(database.getMemberByUid('PUNCH10').passes_remaining, 0);
+  database.close();
+});
+
+test('punchcard re-entry within the cooldown window checks in without spending a pass', () => {
+  const database = new GymDatabase(':memory:');
+  database.db.prepare(`
+    INSERT INTO members
+      (card_uid, first_name, last_name, membership_status, membership_type, passes_remaining)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run('PUNCH20', 'Punch', 'Member', 'active', 'punchcard', 5);
+
+  const base = new Date('2026-01-01T09:00:00Z');
+  const minutesLater = (minutes) => new Date(base.getTime() + minutes * 60 * 1000);
+
+  const first = database.checkIn('PUNCH20', base);
+  assert.equal(first.allowed, true);
+  assert.equal(first.reason, 'punchcard');
+  assert.equal(first.member.passesRemaining, 4);
+
+  // Well within the default 3-hour cooldown -- allowed back in, but no second pass spent.
+  const second = database.checkIn('PUNCH20', minutesLater(90));
+  assert.equal(second.allowed, true);
+  assert.equal(second.reason, 'punchcard_recent');
+  assert.equal(second.member.passesRemaining, 4);
+  assert.equal(database.getMemberByUid('PUNCH20').passes_remaining, 4);
+
+  // Past the cooldown -- a genuinely new visit, spends a pass normally again.
+  const third = database.checkIn('PUNCH20', minutesLater(90 + 3 * 60 + 1));
+  assert.equal(third.allowed, true);
+  assert.equal(third.reason, 'punchcard');
+  assert.equal(third.member.passesRemaining, 3);
+
+  database.close();
+});
+
+test('punchcard cooldown can be disabled (0 hours) or adjusted', () => {
+  const database = new GymDatabase(':memory:');
+  database.db.prepare(`
+    INSERT INTO members
+      (card_uid, first_name, last_name, membership_status, membership_type, passes_remaining)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run('PUNCH30', 'Punch', 'Member', 'active', 'punchcard', 5);
+
+  assert.equal(database.getPunchcardCooldownHours(), 3); // default
+  database.setPunchcardCooldownHours(0);
+  assert.equal(database.getPunchcardCooldownHours(), 0);
+
+  const base = new Date('2026-01-01T09:00:00Z');
+  const secondsLater = (seconds) => new Date(base.getTime() + seconds * 1000);
+  const first = database.checkIn('PUNCH30', base);
+  const second = database.checkIn('PUNCH30', secondsLater(1)); // one second later -- cooldown is off
+  assert.equal(first.member.passesRemaining, 4);
+  assert.equal(second.reason, 'punchcard'); // not punchcard_recent -- cooldown disabled means every scan spends a pass
+  assert.equal(second.member.passesRemaining, 3);
+
+  assert.throws(() => database.setPunchcardCooldownHours(-1), /invalid_cooldown_hours/);
+  assert.throws(() => database.setPunchcardCooldownHours('abc'), /invalid_cooldown_hours/);
+
+  database.close();
+});
+
+test("monthly members are unaffected by the punch-card cooldown (they don't spend passes)", () => {
+  const database = new GymDatabase(':memory:');
+  database.db.prepare(`
+    INSERT INTO members
+      (card_uid, first_name, last_name, membership_status, membership_type, valid_until)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run('MONTHLY10', 'Monthly', 'Member', 'active', 'monthly', '2099-12-31');
+
+  const base = new Date('2026-01-01T09:00:00Z');
+  const minutesLater = (minutes) => new Date(base.getTime() + minutes * 60 * 1000);
+  const first = database.checkIn('MONTHLY10', base);
+  const second = database.checkIn('MONTHLY10', minutesLater(5)); // straight back in, seconds later
+  assert.equal(first.allowed, true);
+  assert.equal(first.reason, 'active');
+  assert.equal(second.allowed, true);
+  assert.equal(second.reason, 'active'); // never punchcard_recent -- that only ever applies to punch cards
+
   database.close();
 });
 

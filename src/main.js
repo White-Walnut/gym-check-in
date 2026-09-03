@@ -69,7 +69,7 @@ const publicErrors = new Set([
   'invalid_uid', 'invalid_name', 'invalid_membership_type', 'invalid_date',
   'invalid_passes', 'invalid_member', 'invalid_status', 'member_not_found', 'card_exists',
   'not_authorized', 'invalid_pin', 'wrong_pin', 'wrong_recovery_code', 'invalid_amount',
-  'invalid_photo', 'invalid_retention_days', 'cancelled'
+  'invalid_photo', 'invalid_retention_days', 'invalid_cooldown_hours', 'cancelled'
 ]);
 
 function adminResult(work) {
@@ -570,6 +570,30 @@ async function runSmokeCapture() {
     throw new Error(`+1 month renewal did not complete as expected: ${JSON.stringify(renewalResult)}`);
   }
   await captureScreenshot('07g-renewed-with-amount.png');
+  // Payments tab: the amount just paid above (Alex Morgan, 450 Kč) should now actually be visible
+  // somewhere -- reported directly as "completely invisible right now" before this tab existed. Real
+  // click on the real tab button, not calling runPaymentsSearch() directly.
+  await mainWindow.webContents.executeJavaScript("setAdminTab('payments')");
+  await new Promise((resolve) => setTimeout(resolve, 700));
+  await captureScreenshot('07h-payments-tab.png');
+  const paymentsState = await mainWindow.webContents.executeJavaScript(
+    "({ rowText: paymentsResults.textContent, totalText: paymentsTotal.textContent })"
+  );
+  if (!paymentsState.rowText.includes('Alex Morgan') || !paymentsState.rowText.includes('450')
+    || !paymentsState.totalText.includes('450')) {
+    throw new Error(`The payments tab did not show the recent renewal payment as expected: ${JSON.stringify(paymentsState)}`);
+  }
+  // Filtering by a name that doesn't match anything should show the real empty-state, not a stale list.
+  await mainWindow.webContents.executeJavaScript("paymentsQuery.value = 'Nobody Here'; paymentsFilterButton.click();");
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  const emptyFilterMatched = await mainWindow.webContents.executeJavaScript(
+    "!paymentsResults.textContent.includes('Alex Morgan') && Boolean(paymentsResults.querySelector('.empty-search'))"
+  );
+  if (!emptyFilterMatched) {
+    throw new Error('Filtering payments by a non-matching name did not show the expected empty state');
+  }
+  await mainWindow.webContents.executeJavaScript("paymentsClearButton.click()");
+  await new Promise((resolve) => setTimeout(resolve, 500));
   // Clicking a member's name (not the Edit button) should open the same editor -- exercise the real
   // click listener, not just call openMemberEditor() directly, so this actually verifies the new
   // click-to-edit affordance rather than assuming it's wired correctly.
@@ -1154,6 +1178,39 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle('recent-check-ins', () => gymDatabase.recentCheckIns());
 
+  ipcMain.handle('search-payments', (_event, filters) => adminResult(() => {
+    assertUnlocked();
+    return gymDatabase.searchPayments(filters);
+  }));
+  ipcMain.handle('export-payments-csv', async (_event, filters) => {
+    if (!staffUnlocked) return { ok: false, error: 'not_authorized' };
+    const CSV_EXPORT_CAP = 5000;
+    const { rows } = gymDatabase.searchPayments({ ...filters, limit: CSV_EXPORT_CAP, offset: 0 });
+    const csv = toCsv(
+      [
+        { key: 'createdAt', label: t(currentLanguage, 'main.csv.date') },
+        { key: 'name', label: t(currentLanguage, 'main.csv.name') },
+        { key: 'eventType', label: t(currentLanguage, 'main.csv.eventType') },
+        { key: 'membershipType', label: t(currentLanguage, 'main.csv.membershipType') },
+        { key: 'amount', label: t(currentLanguage, 'main.csv.amount') }
+      ],
+      rows.map((row) => ({ ...row, amount: (row.amountCents / 100).toFixed(2) }))
+    );
+    const target = await dialog.showSaveDialog(staffFacingWindow(), {
+      title: t(currentLanguage, 'main.dialogs.exportPaymentsTitle'),
+      defaultPath: `gym-checkin-payments-${localDateString()}.csv`,
+      filters: [{ name: t(currentLanguage, 'main.dialogs.csvFilterName'), extensions: ['csv'] }]
+    });
+    if (target.canceled || !target.filePath) return { ok: false, error: 'cancelled' };
+    try {
+      fs.writeFileSync(target.filePath, csv);
+      return { ok: true, data: { path: target.filePath, count: rows.length, truncated: rows.length >= CSV_EXPORT_CAP } };
+    } catch (error) {
+      logger.logError('export', 'Payments export failed', error);
+      return { ok: false, error: 'operation_failed' };
+    }
+  });
+
   // --- Staff auth ---------------------------------------------------------------------------------
   ipcMain.handle('has-staff-pin', () => gymDatabase.hasStaffPin());
 
@@ -1384,6 +1441,12 @@ app.whenReady().then(async () => {
   ipcMain.handle('set-checkin-retention-days', (_event, days) => adminResult(() => {
     assertUnlocked();
     gymDatabase.setCheckinRetentionDays(days);
+  }));
+
+  ipcMain.handle('get-punchcard-cooldown-hours', () => gymDatabase.getPunchcardCooldownHours());
+  ipcMain.handle('set-punchcard-cooldown-hours', (_event, hours) => adminResult(() => {
+    assertUnlocked();
+    gymDatabase.setPunchcardCooldownHours(hours);
   }));
 
   ipcMain.handle('export-member-data', async (_event, input) => {

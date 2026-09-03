@@ -48,6 +48,7 @@ const adminContent = document.querySelector('#admin-content');
 const adminAdd = document.querySelector('#admin-add');
 const adminRenew = document.querySelector('#admin-renew');
 const adminHistory = document.querySelector('#admin-history');
+const adminPayments = document.querySelector('#admin-payments');
 const adminSettings = document.querySelector('#admin-settings');
 const activityFeedList = document.querySelector('#activity-feed-list');
 const historyQuery = document.querySelector('#history-query');
@@ -60,6 +61,16 @@ const historyCount = document.querySelector('#history-count');
 const historyLoadMoreButton = document.querySelector('#history-load-more-button');
 const historyExportButton = document.querySelector('#history-export-button');
 const historyStatus = document.querySelector('#history-status');
+const paymentsQuery = document.querySelector('#payments-query');
+const paymentsFromDate = document.querySelector('#payments-from-date');
+const paymentsToDate = document.querySelector('#payments-to-date');
+const paymentsFilterButton = document.querySelector('#payments-filter-button');
+const paymentsClearButton = document.querySelector('#payments-clear-button');
+const paymentsResults = document.querySelector('#payments-results');
+const paymentsTotal = document.querySelector('#payments-total');
+const paymentsLoadMoreButton = document.querySelector('#payments-load-more-button');
+const paymentsExportButton = document.querySelector('#payments-export-button');
+const paymentsStatus = document.querySelector('#payments-status');
 const cardCapture = document.querySelector('#card-capture');
 const capturedUid = document.querySelector('#captured-uid');
 const memberCardUid = document.querySelector('#member-card-uid');
@@ -122,6 +133,9 @@ const appearanceModeToggle = document.querySelector('#appearance-mode-toggle');
 const themeSwatches = [...document.querySelectorAll('.theme-swatch')];
 const retentionDaysInput = document.querySelector('#retention-days-input');
 const saveRetentionButton = document.querySelector('#save-retention-button');
+const cooldownHoursInput = document.querySelector('#cooldown-hours-input');
+const saveCooldownButton = document.querySelector('#save-cooldown-button');
+const cooldownStatus = document.querySelector('#cooldown-status');
 const languageChoiceButtons = [...document.querySelectorAll('.language-choice')];
 const scanMethodChoiceButtons = [...document.querySelectorAll('.scan-method-choice')];
 const retentionStatus = document.querySelector('#retention-status');
@@ -269,6 +283,10 @@ const HISTORY_PAGE_SIZE = 50;
 let historyOffset = 0;
 let historySearchTimer;
 
+const PAYMENTS_PAGE_SIZE = 50;
+let paymentsOffset = 0;
+let paymentsSearchTimer;
+
 // The active UI language -- read from the main process (app_meta, not localStorage: main.js needs
 // it too, for the OS notification and native dialog titles) as soon as getAppInfo() resolves near
 // the bottom of this file, and updated live by the language switcher in Settings. Every function
@@ -303,14 +321,14 @@ editMemberForm.addEventListener('input', () => { editMemberDirty = true; });
 window.__gymHasUnsavedChanges = () => addMemberDirty || editMemberDirty;
 
 const REASON_CODES = new Set([
-  'active', 'punchcard', 'expired', 'no_passes', 'frozen', 'cancelled',
+  'active', 'punchcard', 'punchcard_recent', 'expired', 'no_passes', 'frozen', 'cancelled',
   'unknown_card', 'system_error', 'invalid_uid'
 ]);
 const ERROR_CODES = new Set([
   'invalid_uid', 'invalid_name', 'invalid_membership_type', 'invalid_status', 'invalid_date',
   'invalid_passes', 'invalid_member', 'member_not_found', 'card_exists', 'not_authorized',
   'invalid_pin', 'wrong_pin', 'wrong_recovery_code', 'locked_out', 'invalid_amount',
-  'invalid_photo', 'invalid_retention_days', 'operation_failed', 'no_log_yet'
+  'invalid_photo', 'invalid_retention_days', 'invalid_cooldown_hours', 'operation_failed', 'no_log_yet'
 ]);
 
 // Replaces the old static reasonCopy/errorCopy lookup objects -- both now resolve through
@@ -655,10 +673,12 @@ function closeAdmin() {
   if (!confirmDiscardUnsavedChanges()) return;
   clearTimeout(searchTimer);
   clearTimeout(historySearchTimer);
+  clearTimeout(paymentsSearchTimer);
   setStatus(addMemberStatus, '');
   setStatus(renewStatus, '');
   setStatus(staffLockStatus, '');
   setStatus(historyStatus, '');
+  setStatus(paymentsStatus, '');
   editMemberForm.hidden = true;
   armedCaptureTarget = null;
   clearExpiringButton.hidden = true;
@@ -688,10 +708,12 @@ function setAdminTab(tabName) {
   const isAdd = tabName === 'add';
   const isRenew = tabName === 'renew';
   const isHistory = tabName === 'history';
+  const isPayments = tabName === 'payments';
   const isSettings = tabName === 'settings';
   adminAdd.hidden = !isAdd;
   adminRenew.hidden = !isRenew;
   adminHistory.hidden = !isHistory;
+  adminPayments.hidden = !isPayments;
   adminSettings.hidden = !isSettings;
   adminTabs.forEach((button) => button.classList.toggle('is-active', button.dataset.adminTab === tabName));
 
@@ -704,10 +726,14 @@ function setAdminTab(tabName) {
   if (isHistory) {
     runHistorySearch(true);
   }
+  if (isPayments) {
+    runPaymentsSearch(true);
+  }
   if (isSettings) {
     window.gym.getKioskLockdown().then((enabled) => { kioskLockdownToggle.checked = enabled; });
     window.gym.getDualScreenEnabled().then((enabled) => { dualScreenToggle.checked = enabled; });
     window.gym.getCheckinRetentionDays().then((days) => { retentionDaysInput.value = days; });
+    window.gym.getPunchcardCooldownHours().then((hours) => { cooldownHoursInput.value = hours; });
   }
 }
 
@@ -896,6 +922,114 @@ historyExportButton.addEventListener('click', async () => {
     setStatus(historyStatus, '');
   } else {
     showError(historyStatus, result.error);
+  }
+});
+
+// --- Payments (Settings > Payments tab) -----------------------------------------------------------
+// The amount paid was already being captured at signup/renewal (see promptForAmountCents above), but
+// nothing anywhere let staff see it again afterward -- reported directly as "completely invisible
+// right now". This lists every signup/renewal a real amount was actually entered for (the prompt can
+// always be skipped, so plenty legitimately have none -- those don't show up here), with a running
+// total for whatever filter is applied, mirroring runHistorySearch's own pattern closely.
+
+function formatAmountCents(cents) {
+  return (Number(cents) / 100).toLocaleString(dateLocale(), { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
+function currentPaymentsFilters() {
+  return {
+    query: paymentsQuery.value.trim(),
+    fromDate: paymentsFromDate.value,
+    toDate: paymentsToDate.value
+  };
+}
+
+function renderPaymentsRow(entry) {
+  const row = document.createElement('div');
+  row.className = 'history-row';
+
+  const when = document.createElement('time');
+  when.textContent = formatDateTime(new Date(entry.createdAt.replace(' ', 'T')));
+
+  const who = document.createElement('div');
+  const name = document.createElement('strong');
+  name.textContent = entry.name;
+  const detail = document.createElement('small');
+  detail.textContent = window.i18n.t(currentLang, 'payments.rowDescription', {
+    event: window.i18n.t(currentLang, entry.eventType === 'signup' ? 'payments.eventSignup' : 'payments.eventRenewal'),
+    plan: window.i18n.t(currentLang, entry.membershipType === 'monthly' ? 'edit.membershipMonthly' : 'edit.membershipPunchcard')
+  });
+  who.append(name, detail);
+
+  const amount = document.createElement('span');
+  amount.className = 'history-status is-approved';
+  amount.textContent = `${formatAmountCents(entry.amountCents)} Kč`;
+
+  row.append(when, who, amount);
+  return row;
+}
+
+async function runPaymentsSearch(reset) {
+  if (reset) {
+    paymentsOffset = 0;
+    paymentsResults.replaceChildren();
+    paymentsLoadMoreButton.hidden = true;
+  }
+  setStatus(paymentsStatus, window.i18n.t(currentLang, 'payments.loading'));
+  const response = await window.gym.searchPayments({
+    ...currentPaymentsFilters(),
+    limit: PAYMENTS_PAGE_SIZE,
+    offset: paymentsOffset
+  });
+  if (!response.ok) {
+    showError(paymentsStatus, response.error);
+    return;
+  }
+  const { rows, totalCents } = response.data;
+  if (reset && !rows.length) {
+    const empty = document.createElement('div');
+    empty.className = 'empty-search';
+    empty.textContent = window.i18n.t(currentLang, 'payments.noMatches');
+    paymentsResults.append(empty);
+  } else {
+    rows.forEach((entry) => paymentsResults.append(renderPaymentsRow(entry)));
+  }
+  paymentsOffset += rows.length;
+  paymentsTotal.textContent = window.i18n.t(currentLang, 'payments.totalShown', {
+    amount: formatAmountCents(totalCents),
+    count: paymentsOffset
+  });
+  paymentsLoadMoreButton.hidden = rows.length < PAYMENTS_PAGE_SIZE;
+  setStatus(paymentsStatus, '');
+}
+
+paymentsFilterButton.addEventListener('click', () => runPaymentsSearch(true));
+paymentsLoadMoreButton.addEventListener('click', () => runPaymentsSearch(false));
+paymentsClearButton.addEventListener('click', () => {
+  paymentsQuery.value = '';
+  paymentsFromDate.value = '';
+  paymentsToDate.value = '';
+  runPaymentsSearch(true);
+});
+paymentsQuery.addEventListener('input', () => {
+  clearTimeout(paymentsSearchTimer);
+  paymentsSearchTimer = setTimeout(() => runPaymentsSearch(true), 220);
+});
+[paymentsFromDate, paymentsToDate].forEach((input) => {
+  input.addEventListener('change', () => runPaymentsSearch(true));
+});
+
+paymentsExportButton.addEventListener('click', async () => {
+  setStatus(paymentsStatus, window.i18n.t(currentLang, 'payments.exporting'));
+  const result = await window.gym.exportPaymentsCsv(currentPaymentsFilters());
+  if (result.ok) {
+    setStatus(paymentsStatus, result.data.truncated
+      ? window.i18n.t(currentLang, 'payments.exportedTruncated', { count: result.data.count })
+      : window.i18n.t(currentLang, 'payments.exportedOk', { count: result.data.count, path: result.data.path }), 'success');
+  } else if (result.error === 'cancelled') {
+    setStatus(paymentsStatus, '');
+  } else {
+    showError(paymentsStatus, result.error);
   }
 });
 
@@ -2048,6 +2182,17 @@ saveRetentionButton.addEventListener('click', async () => {
     return;
   }
   setStatus(retentionStatus, window.i18n.t(currentLang, 'settings.retention.saved'), 'success');
+});
+
+saveCooldownButton.addEventListener('click', async () => {
+  saveCooldownButton.disabled = true;
+  const response = await window.gym.setPunchcardCooldownHours(Number(cooldownHoursInput.value));
+  saveCooldownButton.disabled = false;
+  if (!response.ok) {
+    showError(cooldownStatus, response.error);
+    return;
+  }
+  setStatus(cooldownStatus, window.i18n.t(currentLang, 'settings.cooldown.saved'), 'success');
 });
 
 exportBackupButton.addEventListener('click', async () => {
