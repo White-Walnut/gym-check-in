@@ -61,6 +61,18 @@ function staffFacingWindow() {
   return staffWindow || kioskWindow;
 }
 
+// Windows-specific Electron quirk: after a native dialog.showOpenDialog/showSaveDialog closes, the
+// BrowserWindow that owned it can come back with its mouse/keyboard hit-testing desynced -- clicks
+// and typing land on nothing, everything LOOKS normal, and it stays that way until the window
+// genuinely regains OS focus (minimizing and restoring it is the workaround staff found by hand).
+// Explicitly re-focusing the window the instant the dialog resolves forces Chromium to resync input
+// routing itself, so staff never has to. Called after every dialog in this file, whether or not the
+// user picked a file -- the desync isn't tied to what they chose, just to the dialog having opened.
+function refocusAfterNativeDialog() {
+  const win = staffFacingWindow();
+  if (win && !win.isDestroyed()) win.focus();
+}
+
 const ASSETS_DIR = path.join(__dirname, '..', 'assets');
 const DEMO_PHOTOS_DIR = path.join(ASSETS_DIR, 'members');
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
@@ -1167,6 +1179,7 @@ app.whenReady().then(async () => {
       defaultPath: `gym-checkin-history-${localDateString()}.csv`,
       filters: [{ name: t(currentLanguage, 'main.dialogs.csvFilterName'), extensions: ['csv'] }]
     });
+    refocusAfterNativeDialog();
     if (target.canceled || !target.filePath) return { ok: false, error: 'cancelled' };
     try {
       fs.writeFileSync(target.filePath, csv);
@@ -1201,6 +1214,7 @@ app.whenReady().then(async () => {
       defaultPath: `gym-checkin-payments-${localDateString()}.csv`,
       filters: [{ name: t(currentLanguage, 'main.dialogs.csvFilterName'), extensions: ['csv'] }]
     });
+    refocusAfterNativeDialog();
     if (target.canceled || !target.filePath) return { ok: false, error: 'cancelled' };
     try {
       fs.writeFileSync(target.filePath, csv);
@@ -1306,6 +1320,7 @@ app.whenReady().then(async () => {
       properties: ['openFile'],
       filters: [{ name: t(currentLanguage, 'main.dialogs.imagesFilterName'), extensions: ['jpg', 'jpeg', 'png', 'webp'] }]
     });
+    refocusAfterNativeDialog();
     if (result.canceled || !result.filePaths.length) return { ok: false, error: 'cancelled' };
     return { ok: true, data: { path: result.filePaths[0] } };
   });
@@ -1383,6 +1398,7 @@ app.whenReady().then(async () => {
       properties: ['openFile'],
       filters: [{ name: t(currentLanguage, 'main.dialogs.imagesFilterName'), extensions: ['jpg', 'jpeg', 'png', 'webp'] }]
     });
+    refocusAfterNativeDialog();
     if (result.canceled || !result.filePaths.length) return { ok: false, error: 'cancelled' };
     return { ok: true, data: { path: result.filePaths[0] } };
   });
@@ -1463,6 +1479,7 @@ app.whenReady().then(async () => {
       defaultPath: `${data.member.name.replace(/[^a-z0-9]+/gi, '-')}-data-export.json`,
       filters: [{ name: t(currentLanguage, 'main.dialogs.jsonFilterName'), extensions: ['json'] }]
     });
+    refocusAfterNativeDialog();
     if (target.canceled || !target.filePath) return { ok: false, error: 'cancelled' };
     try {
       fs.writeFileSync(target.filePath, JSON.stringify(data, null, 2));
@@ -1481,6 +1498,7 @@ app.whenReady().then(async () => {
       defaultPath: `gym-checkin-backup-${localDateString()}.sqlite`,
       filters: [{ name: t(currentLanguage, 'main.dialogs.sqliteFilterName'), extensions: ['sqlite'] }]
     });
+    refocusAfterNativeDialog();
     if (target.canceled || !target.filePath) return { ok: false, error: 'cancelled' };
     try {
       fs.copyFileSync(databasePath, target.filePath);
@@ -1503,6 +1521,7 @@ app.whenReady().then(async () => {
       defaultPath: `gym-checkin-log-${localDateString()}.txt`,
       filters: [{ name: t(currentLanguage, 'main.dialogs.textFilterName'), extensions: ['txt', 'log'] }]
     });
+    refocusAfterNativeDialog();
     if (target.canceled || !target.filePath) return { ok: false, error: 'cancelled' };
     try {
       fs.copyFileSync(logPath, target.filePath);
