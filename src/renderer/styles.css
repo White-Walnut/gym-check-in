@@ -320,12 +320,12 @@ h1 { margin: 0; font-size: clamp(48px, 6vw, 78px); font-weight: 700; line-height
 .dashboard-test-form { display: flex; align-items: center; gap: 8px; }
 .dashboard-test-form[hidden] { display: none; }
 .dashboard-test-form input { min-height: 34px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-raised); color: var(--text-main); font-family: 'JetBrains Mono', monospace; width: 140px; }
-.admin-close.lock-button { width: auto; height: auto; display: flex; align-items: center; gap: 7px; padding: 9px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--overlay-hover); color: var(--text-main); font: inherit; font-weight: 700; font-size: 13px; cursor: pointer; }
+.admin-close.lock-button { width: auto; height: auto; display: flex; align-items: center; gap: 7px; padding: 9px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--overlay-hover); color: var(--text-main); font: inherit; font-weight: 600; font-size: 13px; cursor: pointer; }
 .admin-close.lock-button[hidden] { display: none; }
 .admin-close.lock-button:hover { background: color-mix(in srgb, var(--overlay-hover) 200%, transparent); }
 .admin-close.lock-button svg { width: 16px; height: 16px; fill: currentColor; }
 .admin-tabs { display: flex; gap: 6px; margin: 24px 0; padding: 5px; border-radius: 12px; background: var(--bg-raised); }
-.admin-tab { flex: 1; padding: 11px; border: 0; border-radius: 9px; background: transparent; color: var(--text-muted); font: inherit; font-weight: 700; cursor: pointer; }
+.admin-tab { flex: 1; padding: 11px; border: 0; border-radius: 9px; background: transparent; color: var(--text-muted); font: inherit; font-weight: 600; cursor: pointer; }
 .admin-tab.is-active { background: color-mix(in srgb, var(--accent) 24%, var(--bg-raised)); color: var(--text-main); }
 .admin-section[hidden] { display: none; }
 
@@ -335,11 +335,14 @@ h1 { margin: 0; font-size: clamp(48px, 6vw, 78px); font-weight: 700; line-height
 .admin-main { flex: 1; min-width: 0; }
 .activity-feed { flex-shrink: 0; width: 240px; padding: 18px 16px; border: 1px solid var(--border); border-radius: 16px; background: var(--bg-raised); position: sticky; top: 0; }
 .activity-feed h3 { margin: 0 0 14px; font-size: 13px; font-weight: 700; letter-spacing: .04em; color: var(--text-muted); text-transform: uppercase; }
-.activity-feed-list { display: grid; gap: 8px; max-height: calc(100vh - 220px); overflow: auto; }
+.activity-feed-list { display: flex; flex-direction: column; max-height: calc(100vh - 220px); overflow: auto; }
 .activity-feed-empty { margin: 0; color: var(--text-muted); font-size: 13px; }
-.activity-feed-row { display: grid; gap: 2px; padding: 10px 12px; border-radius: 10px; background: var(--bg-panel); cursor: pointer; }
-.activity-feed-row:hover { background: color-mix(in srgb, var(--accent) 10%, var(--bg-panel)); }
-.activity-feed-row strong { font-size: 13px; }
+/* A hairline divider instead of its own nested card -- .activity-feed above is already the bordered
+   container; boxing every row inside it too was doubling up the same "this is a group" cue. */
+.activity-feed-row { display: grid; gap: 2px; padding: 9px 4px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background 120ms ease; }
+.activity-feed-row:last-child { border-bottom: 0; }
+.activity-feed-row:hover { background: var(--overlay-hover); }
+.activity-feed-row strong { font-size: 13px; font-weight: 600; }
 .activity-feed-row span { font-size: 12px; font-weight: 700; }
 .activity-feed-row time { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); }
 .activity-feed-row.is-approved span { color: var(--success); }
@@ -372,19 +375,26 @@ h1 { margin: 0; font-size: clamp(48px, 6vw, 78px); font-weight: 700; line-height
 .form-status { min-height: 20px; margin: 0; color: var(--text-muted); font-size: 13px; }
 .form-status.is-error { color: var(--danger); }
 .form-status.is-success { color: var(--success); }
-.primary-button { padding: 12px 18px; border: 0; border-radius: 10px; background: var(--accent); color: var(--accent-contrast); font: inherit; font-weight: 800; cursor: pointer; }
+.primary-button { padding: 12px 18px; border: 0; border-radius: 10px; background: var(--accent); color: var(--accent-contrast); font: inherit; font-weight: 700; cursor: pointer; }
 .primary-button:disabled { opacity: .5; cursor: wait; }
 
 .search-field { font-size: 13px; }
 .search-field input { margin-top: 2px; font-size: 16px; }
 .member-list-heading { display: flex; justify-content: space-between; margin: 18px 2px 10px; color: var(--text-main); font-size: 13px; }
 .member-list-heading span { color: var(--text-muted); font-weight: 400; }
-.search-results { display: grid; gap: 10px; min-height: 230px; max-height: 370px; overflow: auto; padding-right: 4px; }
+/* Rows, not cards: a real list of 50+ members or check-ins doesn't need every single one boxed in
+   its own bordered/rounded/filled container -- that's a lot of chrome repeated many times over for
+   what's ultimately a dense, working data list, not a gallery of items. Plain rows with a hairline
+   divider between them (border-bottom only, no radius, no fill except on hover) read as a proper
+   list, closer to how Linear/Attio/Stripe's own dashboards handle exactly this kind of screen. */
+.search-results { display: flex; flex-direction: column; min-height: 230px; max-height: 370px; overflow: auto; padding-right: 4px; }
 .empty-search { display: grid; place-items: center; min-height: 220px; border: 1px dashed var(--border); border-radius: 14px; color: var(--text-muted); }
-.member-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 16px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-raised); }
+.member-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 16px; padding: 13px 6px; border-bottom: 1px solid var(--border); transition: background 120ms ease; }
+.member-row:hover { background: var(--overlay-hover); }
 .member-row strong, .member-row small { display: block; }
-.member-row small { margin-top: 4px; color: var(--text-muted); }
-.member-row-details { cursor: pointer; border-radius: 8px; margin: -6px; padding: 6px; }
+.member-row strong { font-weight: 600; }
+.member-row small { margin-top: 3px; color: var(--text-muted); }
+.member-row-details { cursor: pointer; border-radius: 6px; margin: -6px; padding: 6px; }
 .member-row-details:hover strong { color: var(--accent); text-decoration: underline; }
 .member-row-details:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
@@ -392,16 +402,18 @@ h1 { margin: 0; font-size: clamp(48px, 6vw, 78px); font-weight: 700; line-height
 .history-filters label { display: grid; gap: 6px; color: var(--text-muted); font-size: 12px; font-weight: 600; }
 .history-filters input { min-height: 40px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-raised); color: var(--text-main); font: inherit; }
 .history-filters input#history-query { width: 220px; font-family: 'JetBrains Mono', monospace; }
-.history-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 16px; padding: 12px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-raised); }
+.history-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 16px; padding: 12px 6px; border-bottom: 1px solid var(--border); transition: background 120ms ease; }
+.history-row:hover { background: var(--overlay-hover); }
 .history-row time { font-family: 'JetBrains Mono', monospace; color: var(--text-muted); font-size: 12px; white-space: nowrap; }
 .history-row strong, .history-row small { display: block; }
+.history-row strong { font-weight: 600; }
 .history-row small { margin-top: 4px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; }
 .history-status { padding: 5px 11px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
 .history-status.is-approved { background: var(--success-soft); color: var(--success); }
 .history-status.is-denied { background: var(--danger-soft); color: var(--danger); }
 .history-actions { display: flex; align-items: center; gap: 14px; margin-top: 14px; }
 .renew-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
-.renew-button { padding: 9px 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-raised); color: var(--text-main); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.renew-button { padding: 9px 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-raised); color: var(--text-main); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
 .renew-button:hover { border-color: var(--accent); }
 .renew-button:disabled { opacity: .45; cursor: wait; }
 .edit-member-form { margin-top: 16px; padding: 18px; border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); border-radius: 14px; background: var(--accent-soft); }
