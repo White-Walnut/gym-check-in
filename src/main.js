@@ -583,6 +583,56 @@ async function runSmokeCapture() {
   );
   await new Promise((resolve) => setTimeout(resolve, 700));
   await captureScreenshot('08f-photo-saved.png');
+  // Member deletion, then a fresh Add-member capture right after: reported from the field that the
+  // name/last-name/valid-until fields went inaccessible after deleting a member and then scanning a
+  // card to add a new one. Uses Casey Demo (10000004, otherwise unreferenced anywhere else in this
+  // script) so deleting it can't affect any other assertion. window.confirm is mocked true here --
+  // this is well before the dedicated mock-confirm test further down, and every later consumer of
+  // window.confirm sets its own value before relying on it, so this doesn't affect anything after it.
+  await mainWindow.webContents.executeJavaScript("closeMemberEditor(); setAdminTab('renew')");
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  await mainWindow.webContents.executeJavaScript("openMemberEditor(visibleMembers.find(member => member.cardUid === '10000004'), true)");
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  await mainWindow.webContents.executeJavaScript("window.confirm = () => true; deleteMemberButton.click();");
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  const deleteResult = await mainWindow.webContents.executeJavaScript(
+    "({ editorHidden: editMemberForm.hidden, statusText: renewStatus.textContent, stillInResults: visibleMembers.some((member) => member.cardUid === '10000004') })"
+  );
+  if (!deleteResult.editorHidden || deleteResult.stillInResults) {
+    throw new Error(`Member deletion did not complete as expected: ${JSON.stringify(deleteResult)}`);
+  }
+  await captureScreenshot('07d-member-deleted.png');
+  await mainWindow.webContents.executeJavaScript("setAdminTab('add')");
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  for (const key of '55555555') {
+    mainWindow.webContents.sendInputEvent({ type: 'keyDown', keyCode: key });
+    mainWindow.webContents.sendInputEvent({ type: 'char', keyCode: key });
+    mainWindow.webContents.sendInputEvent({ type: 'keyUp', keyCode: key });
+  }
+  await new Promise((resolve) => setTimeout(resolve, 800));
+  const postDeleteAddMemberState = await mainWindow.webContents.executeJavaScript(`(() => {
+    const firstName = document.querySelector('#first-name');
+    const lastName = document.querySelector('#last-name');
+    const validUntilField = document.querySelector('#valid-until');
+    firstName.value = 'Taylor';
+    lastName.value = 'Reed';
+    return {
+      capturedUid: memberCardUid.value,
+      firstNameDisabled: firstName.disabled,
+      lastNameDisabled: lastName.disabled,
+      validUntilDisabled: validUntilField.disabled,
+      firstNameTookInput: firstName.value === 'Taylor',
+      lastNameTookInput: lastName.value === 'Reed'
+    };
+  })()`);
+  if (postDeleteAddMemberState.capturedUid !== '55555555' || postDeleteAddMemberState.firstNameDisabled
+    || postDeleteAddMemberState.lastNameDisabled || postDeleteAddMemberState.validUntilDisabled
+    || !postDeleteAddMemberState.firstNameTookInput || !postDeleteAddMemberState.lastNameTookInput) {
+    throw new Error(`Add-member fields were not usable after a prior deletion: ${JSON.stringify(postDeleteAddMemberState)}`);
+  }
+  await captureScreenshot('07e-add-member-after-delete.png');
+  await mainWindow.webContents.executeJavaScript("resetAddMemberForm()");
+
   await mainWindow.webContents.executeJavaScript("closeMemberEditor(); setAdminTab('history')");
   await new Promise((resolve) => setTimeout(resolve, 500));
   await captureScreenshot('08g-checkin-history.png');
