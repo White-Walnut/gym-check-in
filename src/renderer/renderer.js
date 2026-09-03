@@ -139,6 +139,23 @@ const choosePhotoFileButton = document.querySelector('#choose-photo-file-button'
 const cancelPhotoChoiceButton = document.querySelector('#cancel-photo-choice-button');
 const removePhotoButton = document.querySelector('#remove-photo-button');
 
+const brandMarkDefault = document.querySelector('#brand-mark-default');
+const brandMarkLogo = document.querySelector('#brand-mark-logo');
+const brandNameText = document.querySelector('#brand-name-text');
+const adminBrand = document.querySelector('#admin-brand');
+const adminBrandLogo = document.querySelector('#admin-brand-logo');
+const adminBrandName = document.querySelector('#admin-brand-name');
+const staffLockBrand = document.querySelector('#staff-lock-brand');
+const staffLockBrandLogo = document.querySelector('#staff-lock-brand-logo');
+const staffLockBrandName = document.querySelector('#staff-lock-brand-name');
+const brandingLogoPreview = document.querySelector('#branding-logo-preview');
+const brandingLogoPlaceholder = document.querySelector('#branding-logo-placeholder');
+const chooseLogoFileButton = document.querySelector('#choose-logo-file-button');
+const removeLogoButton = document.querySelector('#remove-logo-button');
+const gymNameForm = document.querySelector('#gym-name-form');
+const gymNameInput = document.querySelector('#gym-name-input');
+const brandingStatus = document.querySelector('#branding-status');
+
 const cameraModal = document.querySelector('#camera-modal');
 const cameraVideo = document.querySelector('#camera-video');
 const cameraCanvas = document.querySelector('#camera-canvas');
@@ -1688,6 +1705,76 @@ changePinForm.addEventListener('submit', async (event) => {
   changePinForm.reset();
 });
 
+// Applies a gym's own name/logo to every place it can appear (the kiosk topbar, the admin header,
+// and the PIN lock screen), or the built-in default look wherever nothing's been configured. Called
+// once at startup (every window loads this same page, so every window needs its own call) and again
+// immediately after Settings changes anything, so the change is visible without a restart.
+async function applyGymBranding(branding) {
+  const logoUrl = branding?.logoPath ? await window.gym.getPhotoUrl(branding.logoPath) : null;
+  const name = branding?.name || null;
+
+  brandMarkDefault.hidden = Boolean(logoUrl);
+  brandMarkLogo.hidden = !logoUrl;
+  if (logoUrl) brandMarkLogo.src = logoUrl;
+  brandNameText.textContent = name || 'GYM CHECK-IN';
+
+  // The admin header and lock screen only show this extra row at all once something's actually
+  // configured -- a gym that never touches this setting sees no visual change there whatsoever.
+  const hasCustomBranding = Boolean(logoUrl || name);
+  adminBrand.hidden = !hasCustomBranding;
+  staffLockBrand.hidden = !hasCustomBranding;
+  adminBrandLogo.hidden = !logoUrl;
+  staffLockBrandLogo.hidden = !logoUrl;
+  if (logoUrl) {
+    adminBrandLogo.src = logoUrl;
+    staffLockBrandLogo.src = logoUrl;
+  }
+  adminBrandName.textContent = name || '';
+  staffLockBrandName.textContent = name || '';
+
+  // Settings' own preview of the current state.
+  brandingLogoPreview.hidden = !logoUrl;
+  brandingLogoPlaceholder.hidden = Boolean(logoUrl);
+  if (logoUrl) brandingLogoPreview.src = logoUrl;
+  removeLogoButton.hidden = !branding?.logoPath;
+  gymNameInput.value = name || '';
+}
+
+chooseLogoFileButton.addEventListener('click', async () => {
+  const picked = await window.gym.chooseGymLogo();
+  if (!picked.ok) return; // cancelled
+  chooseLogoFileButton.disabled = true;
+  const response = await window.gym.setGymLogo({ sourcePath: picked.data.path });
+  chooseLogoFileButton.disabled = false;
+  if (!response.ok) {
+    showError(brandingStatus, response.error);
+    return;
+  }
+  await applyGymBranding(await window.gym.getGymBranding());
+  setStatus(brandingStatus, window.i18n.t(currentLang, 'settings.branding.logoUpdated'), 'success');
+});
+
+removeLogoButton.addEventListener('click', async () => {
+  const response = await window.gym.removeGymLogo();
+  if (!response.ok) {
+    showError(brandingStatus, response.error);
+    return;
+  }
+  await applyGymBranding(await window.gym.getGymBranding());
+  setStatus(brandingStatus, window.i18n.t(currentLang, 'settings.branding.logoRemoved'), 'success');
+});
+
+gymNameForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const response = await window.gym.setGymName(gymNameInput.value);
+  if (!response.ok) {
+    showError(brandingStatus, response.error);
+    return;
+  }
+  await applyGymBranding(await window.gym.getGymBranding());
+  setStatus(brandingStatus, window.i18n.t(currentLang, 'settings.branding.nameSaved'), 'success');
+});
+
 kioskLockdownToggle.addEventListener('change', async () => {
   const desired = kioskLockdownToggle.checked;
   kioskLockdownToggle.disabled = true;
@@ -2049,3 +2136,7 @@ window.gym.getAppInfo().then((info) => {
   // of a guess -- see the app-info handler in main.js for where this comes from (app.getVersion()).
   if (appInfo.version) currentVersionDisplay.textContent = `v${appInfo.version}`;
 });
+
+// Independent of the getAppInfo bootstrap above -- every window (kiosk, staff, single) needs its own
+// call, including the lock screen, before/without ever unlocking.
+window.gym.getGymBranding().then(applyGymBranding);

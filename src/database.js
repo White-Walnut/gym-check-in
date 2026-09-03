@@ -440,6 +440,47 @@ class GymDatabase {
     `).run(language);
   }
 
+  // --- Gym branding --------------------------------------------------------------------------------
+  // A gym's own name and logo, shown in place of the generic "GYM CHECK-IN" mark on the check-in
+  // screen, the staff header, and the PIN lock screen. Both optional and unset by default, in which
+  // case every one of those places falls back to the built-in look exactly as before -- this is
+  // purely cosmetic, never required for the app to function.
+
+  getGymBranding() {
+    const name = this.db.prepare("SELECT value FROM app_meta WHERE key = 'gym_name'").get()?.value || null;
+    const logoPath = this.db.prepare("SELECT value FROM app_meta WHERE key = 'gym_logo_path'").get()?.value || null;
+    return { name, logoPath };
+  }
+
+  // An empty/blank name clears it back to the default rather than storing an empty string forever.
+  setGymName(name) {
+    const trimmed = String(name ?? '').trim().slice(0, 60);
+    if (trimmed) {
+      this.db.prepare(`
+        INSERT INTO app_meta (key, value) VALUES ('gym_name', ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      `).run(trimmed);
+    } else {
+      this.db.prepare("DELETE FROM app_meta WHERE key = 'gym_name'").run();
+    }
+    return trimmed;
+  }
+
+  // Returns the previous path (if any) so main.js can delete that now-orphaned file, same pattern as
+  // setMemberPhoto below.
+  setGymLogoPath(logoPath) {
+    const previousLogoPath = this.getGymBranding().logoPath;
+    if (logoPath) {
+      this.db.prepare(`
+        INSERT INTO app_meta (key, value) VALUES ('gym_logo_path', ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      `).run(logoPath);
+    } else {
+      this.db.prepare("DELETE FROM app_meta WHERE key = 'gym_logo_path'").run();
+    }
+    return { previousLogoPath };
+  }
+
   // --- Updates -----------------------------------------------------------------------------------
   // Throttles the automatic background check (see checkForUpdatesAutomatically in main.js) to at
   // most once a day, regardless of how often the app is launched -- a kiosk rebooted several times a

@@ -234,6 +234,18 @@ const en = {
   },
 
   settings: {
+    branding: {
+      heading: 'Gym branding',
+      hint: 'Shown in place of the default mark on the check-in screen, the staff header, and the '
+        + 'PIN screen. Leave blank to use the default look.',
+      chooseLogo: 'Choose logo…',
+      removeLogo: 'Remove logo',
+      namePlaceholder: 'Gym name',
+      saveName: 'Save name',
+      logoUpdated: 'Logo updated.',
+      logoRemoved: 'Logo removed.',
+      nameSaved: 'Name saved.'
+    },
     appearance: {
       heading: 'Appearance',
       hint: "Saved on this PC, so it doesn't need setting again next launch.",
@@ -263,6 +275,7 @@ const en = {
     },
     pin: {
       heading: 'Change staff PIN',
+      hint: '4-8 digits, numbers only.',
       currentPlaceholder: 'Current PIN',
       newPlaceholder: 'New PIN',
       confirmPlaceholder: 'Confirm new PIN',
@@ -432,6 +445,7 @@ const en = {
       exportBackupTitle: 'Export database backup',
       exportLogTitle: 'Export log file',
       choosePhotoTitle: 'Choose a member photo',
+      chooseLogoTitle: 'Choose a gym logo',
       csvFilterName: 'CSV',
       jsonFilterName: 'JSON',
       sqliteFilterName: 'SQLite database',

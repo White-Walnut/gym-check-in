@@ -33,6 +33,12 @@ contextBridge.exposeInMainWorld('gym', {
   exportLogFile: () => ipcRenderer.invoke('export-log-file'),
   openLogFolder: () => ipcRenderer.invoke('open-log-folder'),
 
+  getGymBranding: () => ipcRenderer.invoke('get-gym-branding'),
+  setGymName: (name) => ipcRenderer.invoke('set-gym-name', name),
+  chooseGymLogo: () => ipcRenderer.invoke('choose-gym-logo'),
+  setGymLogo: (input) => ipcRenderer.invoke('set-gym-logo', input),
+  removeGymLogo: () => ipcRenderer.invoke('remove-gym-logo'),
+
   getLanguage: () => ipcRenderer.invoke('get-language'),
   setLanguage: (language) => ipcRenderer.invoke('set-language', language),
 

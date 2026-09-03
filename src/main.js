@@ -29,6 +29,7 @@ let staffWindow;
 let gymDatabase;
 let databasePath;
 let photosDir;
+let brandingDir;
 const smokeArgument = process.argv.find((argument) => argument.startsWith('--smoke-dir='));
 const smokeDirectory = smokeArgument ? smokeArgument.slice('--smoke-dir='.length) : null;
 // Normal smoke mode always forces single-window (deterministic, no real display dependency). This
@@ -90,6 +91,19 @@ function deleteOwnedPhotoFile(photoPath) {
     fs.unlinkSync(resolved);
   } catch (error) {
     logger.logError('photos', 'Could not delete old photo file', error);
+  }
+}
+
+// Same pattern as deleteOwnedPhotoFile above, scoped to brandingDir instead -- the gym logo has no
+// demo: token equivalent (there's no bundled default logo, just the built-in SVG mark).
+function deleteOwnedBrandingFile(logoPath) {
+  if (!logoPath || typeof logoPath !== 'string') return;
+  const resolved = path.resolve(logoPath);
+  if (!isContainedIn(path.resolve(brandingDir), resolved)) return;
+  try {
+    fs.unlinkSync(resolved);
+  } catch (error) {
+    logger.logError('branding', 'Could not delete old logo file', error);
   }
 }
 
@@ -575,6 +589,63 @@ async function runSmokeCapture() {
   await mainWindow.webContents.executeJavaScript("setAdminTab('settings')");
   await new Promise((resolve) => setTimeout(resolve, 500));
   await captureScreenshot('09-admin-settings.png');
+  // Gym branding: staff can put their own gym's name/logo in place of the default "GYM CHECK-IN"
+  // mark. choose-gym-logo opens a native file dialog (like choose-member-photo) that can't be
+  // automated here, so this calls set-gym-logo directly with a real file already on disk
+  // (assets/icon.png), exactly like the member-photo coverage above bypasses its own dialog via the
+  // webcam path instead. Confirms the logo/name land in all three places they should (kiosk topbar,
+  // admin header, lock screen), then that removing them reverts every one back to the default look.
+  const logoSourcePath = path.join(ASSETS_DIR, 'icon.png');
+  // Calling window.gym.setGymLogo directly (bypassing the dialog) also bypasses chooseLogoFileButton's
+  // own click handler -- which is the thing that actually re-applies branding afterward -- so that
+  // reapply is done explicitly here too, matching what a real click would have triggered.
+  const setLogoResult = await mainWindow.webContents.executeJavaScript(
+    `window.gym.setGymLogo({ sourcePath: ${JSON.stringify(logoSourcePath)} })`
+  );
+  if (!setLogoResult.ok) {
+    throw new Error(`set-gym-logo failed unexpectedly: ${JSON.stringify(setLogoResult)}`);
+  }
+  await mainWindow.webContents.executeJavaScript('window.gym.getGymBranding().then(applyGymBranding)');
+  await mainWindow.webContents.executeJavaScript(
+    "gymNameInput.value = 'Riverside Fitness'; gymNameForm.requestSubmit();"
+  );
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  const brandedState = await mainWindow.webContents.executeJavaScript(
+    '({ topbarLogoHidden: brandMarkLogo.hidden, topbarName: brandNameText.textContent, adminBrandHidden: adminBrand.hidden, adminBrandName: adminBrandName.textContent, previewHidden: brandingLogoPreview.hidden, removeButtonHidden: removeLogoButton.hidden })'
+  );
+  if (brandedState.topbarLogoHidden || brandedState.topbarName !== 'Riverside Fitness'
+    || brandedState.adminBrandHidden || brandedState.adminBrandName !== 'Riverside Fitness'
+    || brandedState.previewHidden || brandedState.removeButtonHidden) {
+    throw new Error(`Gym branding did not apply as expected: ${JSON.stringify(brandedState)}`);
+  }
+  await captureScreenshot('09k-gym-branding.png');
+  // The lock screen only ever loads this page fresh (no live-reapply while staying unlocked), so
+  // confirm it too by relocking and checking before unlocking again.
+  await mainWindow.webContents.executeJavaScript('adminClose.click()');
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  const lockScreenBranded = await mainWindow.webContents.executeJavaScript(
+    '({ hidden: staffLockBrand.hidden, name: staffLockBrandName.textContent, logoHidden: staffLockBrandLogo.hidden })'
+  );
+  if (lockScreenBranded.hidden || lockScreenBranded.name !== 'Riverside Fitness' || lockScreenBranded.logoHidden) {
+    throw new Error(`Gym branding did not appear on the lock screen as expected: ${JSON.stringify(lockScreenBranded)}`);
+  }
+  await captureScreenshot('09l-branding-on-lock-screen.png');
+  await mainWindow.webContents.executeJavaScript("staffLockPinInput.value = '1234'; staffLockEnterForm.requestSubmit();");
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  await mainWindow.webContents.executeJavaScript("setAdminTab('settings')");
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  // Removing the logo and clearing the name should revert every one of those three places back to
+  // the built-in default -- not leave any of them stuck showing stale branding.
+  await mainWindow.webContents.executeJavaScript('removeLogoButton.click()');
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  await mainWindow.webContents.executeJavaScript("gymNameInput.value = ''; gymNameForm.requestSubmit();");
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  const revertedState = await mainWindow.webContents.executeJavaScript(
+    '({ topbarLogoHidden: brandMarkLogo.hidden, topbarName: brandNameText.textContent, adminBrandHidden: adminBrand.hidden })'
+  );
+  if (!revertedState.topbarLogoHidden || revertedState.topbarName !== 'GYM CHECK-IN' || !revertedState.adminBrandHidden) {
+    throw new Error(`Removing gym branding did not revert to the default look as expected: ${JSON.stringify(revertedState)}`);
+  }
   // Update flow: simulate the real autoUpdater events (no actual network check in smoke mode) to
   // verify the Download/Restart-and-install buttons actually appear and disappear at the right
   // moments -- this is the exact state machine that was previously a dead end (an update could be
@@ -889,6 +960,7 @@ app.whenReady().then(async () => {
   // real app-data folder, outliving the smoke run itself. Route it into the throwaway smoke
   // directory instead, same as the screenshots and console-errors.log already are.
   photosDir = smokeDirectory ? path.join(smokeDirectory, 'photos') : path.join(app.getPath('userData'), 'photos');
+  brandingDir = smokeDirectory ? path.join(smokeDirectory, 'branding') : path.join(app.getPath('userData'), 'branding');
 
   try {
     gymDatabase = new GymDatabase(databasePath);
@@ -907,7 +979,10 @@ app.whenReady().then(async () => {
     return;
   }
 
-  gymDatabase.seedDemoMembers();
+  // Real installs start completely empty -- a gym owner's first launch should never show fake
+  // members they have to notice and delete. The smoke script still needs these (its assertions are
+  // built around these exact UIDs/names), so it's the one and only caller that still gets them.
+  if (smokeDirectory) gymDatabase.seedDemoMembers();
   kioskLockdownEnabled = gymDatabase.getKioskLockdown();
   dualScreenEnabled = gymDatabase.getDualScreenEnabled();
   currentLanguage = gymDatabase.getLanguage();
@@ -1138,6 +1213,54 @@ app.whenReady().then(async () => {
     if (kioskWindowIsCustomerFacing && kioskWindow && !kioskWindow.isDestroyed()) kioskWindow.setKiosk(value);
   }));
 
+  // --- Gym branding --------------------------------------------------------------------------------
+  // Read is unauthenticated, same as get-kiosk-lockdown/get-language above: the lock screen and the
+  // kiosk window both need to show it before/without ever unlocking. Every write is staff-gated.
+  ipcMain.handle('get-gym-branding', () => gymDatabase.getGymBranding());
+
+  ipcMain.handle('set-gym-name', (_event, name) => adminResult(() => {
+    assertUnlocked();
+    return { name: gymDatabase.setGymName(name) };
+  }));
+
+  ipcMain.handle('choose-gym-logo', async () => {
+    if (!staffUnlocked) return { ok: false, error: 'not_authorized' };
+    const result = await dialog.showOpenDialog(staffFacingWindow(), {
+      title: t(currentLanguage, 'main.dialogs.chooseLogoTitle'),
+      properties: ['openFile'],
+      filters: [{ name: t(currentLanguage, 'main.dialogs.imagesFilterName'), extensions: ['jpg', 'jpeg', 'png', 'webp'] }]
+    });
+    if (result.canceled || !result.filePaths.length) return { ok: false, error: 'cancelled' };
+    return { ok: true, data: { path: result.filePaths[0] } };
+  });
+
+  ipcMain.handle('set-gym-logo', (_event, input) => adminResult(() => {
+    assertUnlocked();
+    const sourcePath = String(input?.sourcePath ?? '');
+    if (!isAllowedImageExtension(sourcePath)) throw new Error('invalid_photo');
+    let stats;
+    try {
+      stats = fs.statSync(sourcePath);
+    } catch {
+      throw new Error('invalid_photo');
+    }
+    if (!stats.isFile() || stats.size > MAX_PHOTO_BYTES) throw new Error('invalid_photo');
+
+    fs.mkdirSync(brandingDir, { recursive: true });
+    const destPath = path.join(brandingDir, `logo-${Date.now()}${path.extname(sourcePath).toLowerCase()}`);
+    fs.copyFileSync(sourcePath, destPath);
+
+    const { previousLogoPath } = gymDatabase.setGymLogoPath(destPath);
+    deleteOwnedBrandingFile(previousLogoPath);
+    return { logoPath: destPath };
+  }));
+
+  ipcMain.handle('remove-gym-logo', () => adminResult(() => {
+    assertUnlocked();
+    const { previousLogoPath } = gymDatabase.setGymLogoPath(null);
+    deleteOwnedBrandingFile(previousLogoPath);
+  }));
+
   ipcMain.handle('get-language', () => currentLanguage);
   ipcMain.handle('set-language', (_event, language) => adminResult(() => {
     assertUnlocked();
@@ -1245,9 +1368,14 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle('photo-url', (_event, photoPath) => {
+    // Smoke mode saves photos/logos under smokeDirectory, never the real userData folder (see
+    // photosDir/brandingDir above) -- allowlist that instead in smoke mode, or a smoke-saved file
+    // would never resolve to a URL at all. Caught by the gym-branding smoke test asserting the logo
+    // actually renders, not just that saving it reported success; likely a latent gap for member
+    // photos too, just never asserted on that specifically before.
     const resolved = resolvePhotoPath(photoPath, {
       demoPhotosDir: DEMO_PHOTOS_DIR,
-      allowedRoots: [ASSETS_DIR, app.getPath('userData')]
+      allowedRoots: smokeDirectory ? [ASSETS_DIR, smokeDirectory] : [ASSETS_DIR, app.getPath('userData')]
     });
     return resolved ? pathToFileURL(resolved).href : null;
   });

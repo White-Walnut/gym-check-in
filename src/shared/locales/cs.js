@@ -224,6 +224,18 @@ const cs = {
   },
 
   settings: {
+    branding: {
+      heading: 'Značka posilovny',
+      hint: 'Zobrazí se místo výchozí značky na obrazovce check-inu, v hlavičce pro personál a na '
+        + 'obrazovce PIN. Ponechte prázdné pro výchozí vzhled.',
+      chooseLogo: 'Vybrat logo…',
+      removeLogo: 'Odebrat logo',
+      namePlaceholder: 'Název posilovny',
+      saveName: 'Uložit název',
+      logoUpdated: 'Logo aktualizováno.',
+      logoRemoved: 'Logo odebráno.',
+      nameSaved: 'Název uložen.'
+    },
     appearance: {
       heading: 'Vzhled',
       hint: 'Toto nastavení se uloží a příště ho už nastavovat nemusíte.',
@@ -253,6 +265,7 @@ const cs = {
     },
     pin: {
       heading: 'Změnit PIN personálu',
+      hint: '4-8 číslic, pouze čísla.',
       currentPlaceholder: 'Současný PIN',
       newPlaceholder: 'Nový PIN',
       confirmPlaceholder: 'Potvrďte nový PIN',
@@ -417,6 +430,7 @@ const cs = {
       exportBackupTitle: 'Export zálohy databáze',
       exportLogTitle: 'Export logu',
       choosePhotoTitle: 'Vybrat fotku člena',
+      chooseLogoTitle: 'Vybrat logo posilovny',
       csvFilterName: 'CSV',
       jsonFilterName: 'JSON',
       sqliteFilterName: 'Databáze SQLite',
