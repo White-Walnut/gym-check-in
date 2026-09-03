@@ -8,6 +8,14 @@ be hand-edited; if a version's list looks wrong, the fix belongs in that script,
 An "Unreleased" section, when present, lists commits already on `main` that haven't shipped in a
 release yet -- the next `npm run release` replaces it with that version's own dated entry.
 
+## v1.9.11 -- 2026-09-03
+
+- Redesign the admin/management side: rows not cards, calmer weight
+- Never show the custom logo on the kiosk window, only the default mark
+- Fix logo backdrop clash; broadcast language changes to every window
+- Fix gym logo cropping; make the topbar name bigger
+- Add gym branding, visible PIN-format hint, stop seeding demo data
+
 ## v1.9.10 -- 2026-09-03
 
 - Fix: PIN field couldn't be submitted with Enter, only by clicking Unlock
