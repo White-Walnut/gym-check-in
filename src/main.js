@@ -461,6 +461,38 @@ async function runSmokeCapture() {
   await new Promise((resolve) => setTimeout(resolve, 600));
   await captureScreenshot('02b-recovery-code-reveal.png');
   await mainWindow.webContents.executeJavaScript("staffLockRecoveryContinue.click()");
+  // Known-card-while-Add-member-armed guard (see dispatchScan's own comment): the Add-member tab
+  // ambiently arms capture just by being open, unlike Scan to find/replace which are explicit
+  // one-shot button clicks -- so a real member's card tapped here (staff simply hadn't switched off
+  // this tab yet) must still check them in for real, not get treated as an unassigned card to
+  // capture. Dispatches real keydown events for an ALREADY-KNOWN demo UID (Jordan Lee, 10000003 --
+  // deliberately not 10000001, to avoid colliding with the unrelated approved-check-in test just
+  // below, which uses that one and runs within DUPLICATE_WINDOW_MS of this) while fresh off initial
+  // setup, exactly when armedCaptureTarget is still the ambient 'add-member' from opening this tab.
+  await mainWindow.webContents.executeJavaScript(
+    "['1','0','0','0','0','0','0','3'].forEach((k) => document.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true })));"
+  );
+  await new Promise((resolve) => setTimeout(resolve, 800));
+  const knownCardWhileArmed = await mainWindow.webContents.executeJavaScript(
+    "({ feedUid: activityFeedEntries[0]?.uid, feedAllowed: activityFeedEntries[0]?.allowed, captureHasCard: cardCapture.classList.contains('has-card'), stillArmed: armedCaptureTarget })"
+  );
+  if (knownCardWhileArmed.feedUid !== '10000003' || knownCardWhileArmed.feedAllowed !== true
+    || knownCardWhileArmed.captureHasCard !== false || knownCardWhileArmed.stillArmed !== 'add-member') {
+    throw new Error(`A known card tapped while Add-member capture was ambiently armed did not check in as expected: ${JSON.stringify(knownCardWhileArmed)}`);
+  }
+  // The complementary case, same armed state: a genuinely unknown card must still be captured as
+  // before -- this fix must not break the actual "add a new member" flow it exists to protect.
+  await mainWindow.webContents.executeJavaScript(
+    "['9','9','9','9','9','9','9','9'].forEach((k) => document.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true })));"
+  );
+  await new Promise((resolve) => setTimeout(resolve, 800));
+  const unknownCardWhileArmed = await mainWindow.webContents.executeJavaScript(
+    "({ captureHasCard: cardCapture.classList.contains('has-card'), capturedValue: memberCardUid.value })"
+  );
+  if (!unknownCardWhileArmed.captureHasCard || unknownCardWhileArmed.capturedValue !== '99999999') {
+    throw new Error(`A genuinely unknown card while Add-member capture was armed was not captured as expected: ${JSON.stringify(unknownCardWhileArmed)}`);
+  }
+  await mainWindow.webContents.executeJavaScript("resetAddMemberForm()"); // clean slate for the rest of the script, which expects an uncaptured Add-member form
   // The dashboard has no check-in stage of its own any more (see applyWindowRole('single') in
   // renderer.js) -- every check-in below shows only as a toast plus an activity-feed entry, which is
   // exactly what these screenshots are verifying still works correctly with the dashboard as the

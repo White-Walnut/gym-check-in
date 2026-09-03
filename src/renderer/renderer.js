@@ -407,11 +407,16 @@ async function drainCheckInQueue() {
   processingCheckIn = false;
 }
 
-async function processCheckIn(uid) {
+// Shared by the normal check-in queue below and the Add-member capture guard further down -- looks
+// a UID up for real (records history, plays the beep, sends the OS notification, exactly like any
+// other check-in) and shows the result the same way everywhere. Returns the result (or null if this
+// exact UID was just processed within DUPLICATE_WINDOW_MS -- a rapid repeat, not a fresh scan) so a
+// caller that needs to branch on it can.
+async function performCheckIn(uid) {
   const scanKey = normaliseUid(uid);
-  if (!scanKey) return;
+  if (!scanKey) return null;
   const now = Date.now();
-  if (scanKey === lastSubmittedUid && now - lastSubmittedAt < DUPLICATE_WINDOW_MS) return;
+  if (scanKey === lastSubmittedUid && now - lastSubmittedAt < DUPLICATE_WINDOW_MS) return null;
   lastSubmittedUid = scanKey;
   lastSubmittedAt = now;
 
@@ -428,6 +433,11 @@ async function processCheckIn(uid) {
   } else {
     showToast(result);
   }
+  return result;
+}
+
+async function processCheckIn(uid) {
+  await performCheckIn(uid);
 }
 
 // --- Scan routing --------------------------------------------------------------------------------
@@ -436,19 +446,33 @@ async function processCheckIn(uid) {
 // armed that field via a "Scan a different card" / "Scan to find" / "Scan to replace" button;
 // otherwise it always checks the member in, even while an admin form is open and has focus.
 
-function dispatchScan(rawUid) {
+async function dispatchScan(rawUid) {
   const uid = normaliseUid(rawUid);
   if (uid.length < 4) return;
   const decision = routeScan(armedCaptureTarget);
-  if (decision.action === 'capture') {
-    const target = armedCaptureTarget;
-    armedCaptureTarget = null; // one-shot
-    if (target === 'add-member') captureCard(uid);
-    else if (target === 'edit-member') captureEditCardUid(uid);
-    else if (target === 'search') captureSearchUid(uid);
-  } else {
+  if (decision.action !== 'capture') {
     submitUid(uid);
+    return;
   }
+  const target = armedCaptureTarget;
+  if (target === 'add-member') {
+    // Unlike edit-member/search below, this arming isn't an explicit one-shot the user just clicked
+    // a button for -- it's ambient, just from having this tab open (see setAdminTab). A member
+    // genuinely checking in must never be silently swallowed just because staff happened to be on
+    // this tab instead of any other: check first, and only treat an actually-unassigned card as a
+    // new one to capture. A known card gets checked in for real instead, exactly like it would
+    // anywhere else in the app -- and this stays armed afterward, still waiting for a genuinely new
+    // card.
+    const result = await performCheckIn(uid);
+    if (result && result.reason === 'unknown_card') {
+      armedCaptureTarget = null; // one-shot, now that this really is unassigned
+      captureCard(uid);
+    }
+    return;
+  }
+  armedCaptureTarget = null; // one-shot
+  if (target === 'edit-member') captureEditCardUid(uid);
+  else if (target === 'search') captureSearchUid(uid);
 }
 
 function captureCard(uid) {
