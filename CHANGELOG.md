@@ -8,6 +8,10 @@ be hand-edited; if a version's list looks wrong, the fix belongs in that script,
 An "Unreleased" section, when present, lists commits already on `main` that haven't shipped in a
 release yet -- the next `npm run release` replaces it with that version's own dated entry.
 
+## v1.9.15 -- 2026-09-08
+
+- Members list: one renewal action per row, and membership state shown as a status chip instead of buried in a sentence
+
 ## v1.9.14 -- 2026-09-08
 
 - Fix: backups could omit recent changes, a name edit could shorten the next renewal, and a spent last pass blocked re-entry
