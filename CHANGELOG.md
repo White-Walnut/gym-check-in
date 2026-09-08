@@ -8,6 +8,10 @@ be hand-edited; if a version's list looks wrong, the fix belongs in that script,
 An "Unreleased" section, when present, lists commits already on `main` that haven't shipped in a
 release yet -- the next `npm run release` replaces it with that version's own dated entry.
 
+## v1.9.14 -- 2026-09-08
+
+- Fix: backups could omit recent changes, a name edit could shorten the next renewal, and a spent last pass blocked re-entry
+
 ## v1.9.13 -- 2026-09-03
 
 - Fix: window becomes unresponsive to clicks/typing after a native file dialog closes
