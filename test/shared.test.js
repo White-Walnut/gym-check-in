@@ -11,7 +11,7 @@ const {
 } = require('../src/shared/pin');
 const { wouldDiscardBalance } = require('../src/shared/renewal');
 const { resolvePhotoPath, isContainedIn, isAllowedImageExtension } = require('../src/shared/photo-paths');
-const { membershipEndDate } = require('../src/shared/dates');
+const { membershipEndDate, isIsoDate } = require('../src/shared/dates');
 const { checkinNotificationCopy } = require('../src/shared/checkin-notification');
 const { csvField, toCsv } = require('../src/shared/csv');
 const { parseCapturedPhotoDataUrl } = require('../src/shared/photo-capture');
@@ -296,6 +296,34 @@ test('t() interpolates placeholders and falls back to English for a language mis
   assert.equal(t('cs', 'renew.jumpedToCard', { uid: 'ABC123' }), 'Přechod na kartu ABC123.');
   // A key that exists in neither language returns the raw key -- visibly wrong, not a blank string.
   assert.equal(t('en', 'nonexistent.key.here'), 'nonexistent.key.here');
+});
+
+test('isIsoDate rejects a date that has the right shape but does not exist on the calendar', () => {
+  // The regression: JavaScript's date parsing normalises impossible dates, so a shape-only check
+  // accepted these and let them through to the database as membership end dates.
+  assert.equal(isIsoDate('2026-02-30'), false); // February never has 30 days
+  assert.equal(isIsoDate('2026-02-29'), false); // 2026 is not a leap year
+  assert.equal(isIsoDate('2026-04-31'), false); // April has 30
+  assert.equal(isIsoDate('2026-13-01'), false); // no 13th month
+  assert.equal(isIsoDate('2026-00-10'), false);
+  assert.equal(isIsoDate('2026-06-00'), false);
+  assert.equal(isIsoDate('2026-06-32'), false);
+
+  // Still accepts real dates, including the leap day in a year that actually has one.
+  assert.equal(isIsoDate('2026-02-28'), true);
+  assert.equal(isIsoDate('2024-02-29'), true);
+  assert.equal(isIsoDate('2026-12-31'), true);
+  assert.equal(isIsoDate('2000-02-29'), true); // century leap year
+  assert.equal(isIsoDate('1900-02-29'), false); // ...but 1900 was not one
+
+  // Shape failures keep failing, and nothing throws on junk input.
+  assert.equal(isIsoDate('2026-6-1'), false);
+  assert.equal(isIsoDate('26-06-01'), false);
+  assert.equal(isIsoDate('2026-06-01T12:00:00'), false);
+  assert.equal(isIsoDate(''), false);
+  assert.equal(isIsoDate(null), false);
+  assert.equal(isIsoDate(undefined), false);
+  assert.equal(isIsoDate('not a date'), false);
 });
 
 test('plural() picks the correct English (one/other) and Czech (one/few/other) form', () => {

@@ -543,6 +543,11 @@ async function processCheckIn(uid) {
 async function dispatchScan(rawUid) {
   const uid = normaliseUid(rawUid);
   if (uid.length < 4) return;
+  // A scan during a confirmation must not replace form data or move focus behind the dialog.
+  if (!textPromptModal.hidden) {
+    submitUid(uid);
+    return;
+  }
   const decision = routeScan(armedCaptureTarget);
   if (decision.action !== 'capture') {
     submitUid(uid);
@@ -611,21 +616,22 @@ async function openAdmin(tabName = 'add', uid = '') {
   pendingAdminUid = uid;
   if (appInfo.smoke) staffSessionActive = true;
   if (staffSessionActive) {
-    enterAdminContent();
+    await enterAdminContent();
     return;
   }
   await showStaffLock();
 }
 
-function enterAdminContent() {
+async function enterAdminContent() {
   staffLockView.hidden = true;
   adminContent.hidden = false;
   if (appInfo.windowRole !== 'kiosk') adminHeader.hidden = false;
-  setAdminTab(pendingAdminTab);
+  if (!await setAdminTab(pendingAdminTab)) return;
   if (pendingAdminUid) captureCard(pendingAdminUid);
 }
 
 async function showStaffLock() {
+  cancelAppDialog();
   adminContent.hidden = true;
   staffLockView.hidden = false;
   // The PIN screen is its own thing, not "Member management" -- showing that title (or a Lock
@@ -669,8 +675,8 @@ function showRecoveryCode(code, thenEnterAdmin) {
 // "lock and return to the PIN screen" -- it never hides the page itself for those roles, only for a
 // kiosk-role window, which is a defensive fallback: in practice a kiosk window never opens the admin
 // panel at all, so this branch should be unreachable.
-function closeAdmin() {
-  if (!confirmDiscardUnsavedChanges()) return;
+async function closeAdmin() {
+  if (!await confirmDiscardUnsavedChanges()) return;
   clearTimeout(searchTimer);
   clearTimeout(historySearchTimer);
   clearTimeout(paymentsSearchTimer);
@@ -699,10 +705,11 @@ function setStatus(element, message, type = '') {
   element.classList.toggle('is-success', type === 'success');
 }
 
-function setAdminTab(tabName) {
+async function setAdminTab(tabName) {
   // Re-clicking the tab already showing is a no-op, not a "leave" -- skip the check so a staff
   // member idly re-clicking the tab they're typing in doesn't get warned about their own form.
-  if (tabName !== currentAdminTab && !confirmDiscardUnsavedChanges()) return;
+  if (tabName !== currentAdminTab && (addMemberDirty || editMemberDirty)
+    && !await confirmDiscardUnsavedChanges()) return false;
   currentAdminTab = tabName;
 
   const isAdd = tabName === 'add';
@@ -735,6 +742,7 @@ function setAdminTab(tabName) {
     window.gym.getCheckinRetentionDays().then((days) => { retentionDaysInput.value = days; });
     window.gym.getPunchcardCooldownHours().then((hours) => { cooldownHoursInput.value = hours; });
   }
+  return true;
 }
 
 function membershipDescription(member) {
@@ -1046,13 +1054,13 @@ let activityFeedEntries = [];
 // UID already captured (the old check-in stage's "Assign to new member" button doesn't exist any
 // more now that the stage isn't shown on this window -- this is its replacement); anything else jumps
 // to Renew or prolong, searched straight to that card.
-function jumpToActivityFeedEntry(entry) {
+async function jumpToActivityFeedEntry(entry) {
   if (!entry.uid) return;
   if (entry.reason === 'unknown_card') {
-    setAdminTab('add');
+    if (!await setAdminTab('add')) return;
     captureCard(entry.uid);
   } else {
-    setAdminTab('renew');
+    if (!await setAdminTab('renew')) return;
     captureSearchUid(entry.uid);
   }
 }
@@ -1116,12 +1124,12 @@ function toggleEditPlanFields() {
   editPassesRemaining.required = !isMonthly;
 }
 
-function openMemberEditor(member, customDateOnly = false) {
+async function openMemberEditor(member, customDateOnly = false) {
   // Opening any member's editor while one is already open with unsaved changes would silently
   // overwrite those changes with the new (or even the same) member's fresh data -- confirm first,
   // same as every other place that can discard an in-progress edit. Only checks the Edit form
   // itself, not Add-member (an unrelated tab/flow that opening someone's editor has no bearing on).
-  if (!editMemberForm.hidden && !confirmDiscardEditMember()) return;
+  if (!editMemberForm.hidden && editMemberDirty && !await confirmDiscardEditMember()) return;
   editingOriginalMember = member;
   editMemberDirty = false;
   document.querySelector('#edit-member-id').value = member.id;
@@ -1182,22 +1190,22 @@ function resetAddMemberForm() {
 // the other tab's form. confirmDiscardUnsavedChanges() below combines both for the places that
 // really do leave the admin area entirely (switching tabs, Lock, quitting).
 
-function confirmDiscardAddMember() {
+async function confirmDiscardAddMember() {
   if (!addMemberDirty) return true;
-  if (!window.confirm(window.i18n.t(currentLang, 'confirm.discardAddMember'))) return false;
+  if (!await showConfirmation(window.i18n.t(currentLang, 'confirm.discardAddMember'))) return false;
   resetAddMemberForm();
   return true;
 }
 
-function confirmDiscardEditMember() {
+async function confirmDiscardEditMember() {
   if (!editMemberDirty) return true;
-  if (!window.confirm(window.i18n.t(currentLang, 'confirm.discardEditMember'))) return false;
+  if (!await showConfirmation(window.i18n.t(currentLang, 'confirm.discardEditMember'))) return false;
   closeMemberEditor(); // also clears editMemberDirty
   return true;
 }
 
-function confirmDiscardUnsavedChanges() {
-  return confirmDiscardAddMember() && confirmDiscardEditMember();
+async function confirmDiscardUnsavedChanges() {
+  return await confirmDiscardAddMember() && await confirmDiscardEditMember();
 }
 
 function describeDiscard(member, discard) {
@@ -1256,17 +1264,30 @@ function amountToCents(value) {
   return Number.isFinite(parsed) && parsed >= 0 ? Math.round(parsed * 100) : null;
 }
 
-// Stand-in for window.prompt(), which Electron's renderer doesn't support at all -- confirmed against
-// a real build, where it threw "prompt() is not supported" and silently broke every renewal button
-// (window.alert()/window.confirm(), used elsewhere in this file, both work fine; prompt() specifically
-// does not). Resolves with the typed value, or null if cancelled -- same contract as window.prompt()
-// itself, so both call sites below needed no changes beyond awaiting this instead.
+// All page prompts use an HTML dialog. Browser alert/confirm popups can leave Windows input focus
+// stuck after dismissal. showModal keeps focus in this page and makes the background inert.
 let activeTextPromptResolve = null;
+let activePromptKind = null;
+let promptPreviousFocus = null;
+let promptValidate = null;
+const textPromptSubmitButton = textPromptForm.querySelector('[type="submit"]');
+const textPromptError = document.querySelector('#text-prompt-error');
 
-function showTextPrompt(message, { inputType = 'text', maxLength = null } = {}) {
+function showAppDialog(message, { kind = 'text', inputType = 'text', maxLength = null,
+  confirmLabel = null, cancelLabel = null, validate = null } = {}) {
+  // Ignore a second request while another action is waiting for an answer. Never overwrite its
+  // resolver, queue stale destructive actions, or let two renewals share the same answer.
+  if (activeTextPromptResolve) return Promise.resolve(kind === 'confirm' ? false : null);
   return new Promise((resolve) => {
     activeTextPromptResolve = resolve;
+    activePromptKind = kind;
+    promptPreviousFocus = document.activeElement;
+    promptValidate = validate;
+    discardSensitiveBuffer();
     textPromptMessage.textContent = message;
+    textPromptError.textContent = '';
+    textPromptInput.hidden = kind !== 'text';
+    textPromptInput.disabled = kind !== 'text';
     textPromptInput.type = inputType;
     // The maxLength IDL property itself rejects a negative "no limit" value outright (throws
     // IndexSizeError) -- toggling the attribute instead is the actual correct way to add or remove
@@ -1274,27 +1295,74 @@ function showTextPrompt(message, { inputType = 'text', maxLength = null } = {}) 
     if (maxLength) textPromptInput.setAttribute('maxlength', String(maxLength));
     else textPromptInput.removeAttribute('maxlength');
     textPromptInput.value = '';
+    textPromptCancelButton.hidden = kind === 'alert';
+    textPromptCancelButton.textContent = cancelLabel || window.i18n.t(currentLang, 'common.cancel');
+    textPromptSubmitButton.textContent = confirmLabel || window.i18n.t(currentLang, 'common.ok');
     textPromptModal.hidden = false;
-    setTimeout(() => textPromptInput.focus(), 50);
+    textPromptModal.showModal();
+    (kind === 'text' ? textPromptInput : kind === 'confirm' ? textPromptCancelButton : textPromptSubmitButton).focus();
   });
 }
 
+function showTextPrompt(message, options = {}) {
+  return showAppDialog(message, { ...options, kind: 'text' });
+}
+
+function showConfirmation(message, options = {}) {
+  return showAppDialog(message, { ...options, kind: 'confirm' });
+}
+
+function showAlert(message) {
+  return showAppDialog(message, { kind: 'alert' });
+}
+
 function closeTextPrompt(value) {
-  textPromptModal.hidden = true;
+  if (!activeTextPromptResolve) return;
+  discardSensitiveBuffer();
   const resolve = activeTextPromptResolve;
+  const previousFocus = promptPreviousFocus;
   activeTextPromptResolve = null;
-  if (resolve) resolve(value);
+  activePromptKind = null;
+  promptPreviousFocus = null;
+  promptValidate = null;
+  textPromptModal.close();
+  textPromptModal.hidden = true;
+  textPromptInput.value = '';
+  textPromptMessage.textContent = ''; // Do not retain a recovery code after dismissal.
+  textPromptError.textContent = '';
+  if (previousFocus?.isConnected && !previousFocus.disabled && previousFocus.getClientRects().length) {
+    previousFocus.focus({ preventScroll: true });
+  }
+  resolve(value);
 }
 
 textPromptForm.addEventListener('submit', (event) => {
   event.preventDefault();
-  closeTextPrompt(textPromptInput.value);
+  const value = activePromptKind === 'text' ? textPromptInput.value : true;
+  const error = promptValidate?.(value);
+  if (error) {
+    textPromptError.textContent = error;
+    textPromptInput.focus();
+    return;
+  }
+  closeTextPrompt(value);
 });
-textPromptCancelButton.addEventListener('click', () => closeTextPrompt(null));
+function cancelAppDialog() {
+  closeTextPrompt(activePromptKind === 'confirm' ? false : null);
+}
+textPromptCancelButton.addEventListener('click', cancelAppDialog);
+textPromptModal.addEventListener('cancel', (event) => {
+  event.preventDefault();
+  cancelAppDialog();
+});
+textPromptModal.querySelector('.text-prompt-backdrop').addEventListener('click', cancelAppDialog);
 
 async function promptForAmountCents() {
-  const raw = await showTextPrompt(window.i18n.t(currentLang, 'checkin.amountPaidPrompt'));
-  return raw === null ? null : amountToCents(raw);
+  const raw = await showTextPrompt(window.i18n.t(currentLang, 'checkin.amountPaidPrompt'), {
+    validate: (value) => value.trim() && amountToCents(value) === null ? errorText('invalid_amount') : ''
+  });
+  // Blank means no payment recorded; Cancel means no renewal. These must remain distinct.
+  return raw === null ? { cancelled: true } : { cancelled: false, amountCents: amountToCents(raw) };
 }
 
 async function renewMember(memberId, renewalType, clickedButton) {
@@ -1303,10 +1371,12 @@ async function renewMember(memberId, renewalType, clickedButton) {
     const today = localDateString();
     const discard = wouldDiscardBalance(member, renewalType, today);
     if (discard.discardsPasses || discard.discardsDays || discard.reactivates) {
-      if (!window.confirm(describeDiscard(member, discard))) return;
+      if (!await showConfirmation(describeDiscard(member, discard))) return;
     }
   }
-  const amountCents = await promptForAmountCents();
+  const payment = await promptForAmountCents();
+  if (payment.cancelled) return;
+  const { amountCents } = payment;
 
   const buttons = [...clickedButton.closest('.renew-actions').querySelectorAll('button')];
   buttons.forEach((button) => { button.disabled = true; });
@@ -1672,7 +1742,7 @@ exportMemberDataButton.addEventListener('click', async () => {
 deleteMemberButton.addEventListener('click', async () => {
   const memberId = Number(document.querySelector('#edit-member-id').value);
   const name = `${document.querySelector('#edit-first-name').value} ${document.querySelector('#edit-last-name').value}`;
-  const proceed = window.confirm(window.i18n.t(currentLang, 'edit.deleteConfirm', { name }));
+  const proceed = await showConfirmation(window.i18n.t(currentLang, 'edit.deleteConfirm', { name }));
   if (!proceed) return;
   deleteMemberButton.disabled = true;
   const response = await window.gym.deleteMember({ memberId });
@@ -1751,7 +1821,7 @@ editMemberForm.addEventListener('submit', async (event) => {
       membershipStatus: document.querySelector('#edit-membership-status').value,
       cardUid: document.querySelector('#edit-card-uid').value
     });
-    if (riskyChangeMessage && !window.confirm(riskyChangeMessage)) return;
+    if (riskyChangeMessage && !await showConfirmation(riskyChangeMessage)) return;
   }
   const submitButton = editMemberForm.querySelector('[type="submit"]');
   submitButton.disabled = true;
@@ -1873,7 +1943,7 @@ regenerateRecoveryButton.addEventListener('click', async () => {
     showError(changePinStatus, response.error);
     return;
   }
-  window.alert(window.i18n.t(currentLang, 'settings.pin.newRecoveryCodeAlert', { code: response.data.recoveryCode }));
+  await showAlert(window.i18n.t(currentLang, 'settings.pin.newRecoveryCodeAlert', { code: response.data.recoveryCode }));
 });
 
 changePinForm.addEventListener('submit', async (event) => {
@@ -2204,7 +2274,15 @@ exportBackupButton.addEventListener('click', async () => {
     else if (response.error !== 'cancelled') setStatus(backupStatus, window.i18n.t(currentLang, 'settings.backup.failed'), 'error');
     return;
   }
-  setStatus(backupStatus, window.i18n.t(currentLang, 'settings.backup.savedSuccess', { path: response.data.path }), 'success');
+  // Says out loud how many photo/logo files travelled with the database, so staff can tell a
+  // complete backup from a database-only one instead of assuming. Zero files is a legitimate result
+  // (a gym with no uploaded photos and the default logo), which is why the plainer message stays.
+  const message = response.data.fileCount > 0
+    ? window.i18n.t(currentLang, 'settings.backup.savedSuccessWithFiles', {
+      path: response.data.path, count: response.data.fileCount
+    })
+    : window.i18n.t(currentLang, 'settings.backup.savedSuccess', { path: response.data.path });
+  setStatus(backupStatus, message, 'success');
 });
 
 exportLogButton.addEventListener('click', async () => {
@@ -2248,8 +2326,8 @@ downloadUpdateButton.addEventListener('click', async () => {
   }
 });
 
-installUpdateButton.addEventListener('click', () => {
-  if (window.confirm(window.i18n.t(currentLang, 'settings.updates.installConfirm'))) {
+installUpdateButton.addEventListener('click', async () => {
+  if (await showConfirmation(window.i18n.t(currentLang, 'settings.updates.installConfirm'))) {
     window.gym.quitAndInstallUpdate();
   }
 });

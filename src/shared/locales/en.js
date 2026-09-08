@@ -308,9 +308,12 @@ const en = {
     },
     backup: {
       heading: 'Backup',
-      hint: 'Save a copy of the member database to a location of your choice.',
+      hint: 'Save a copy of the member database to a location of your choice. Member photos and your '
+        + 'gym logo are files on disk rather than database entries, so they are saved into a folder '
+        + 'next to the backup -- keep the two together.',
       exportButton: 'Export backup…',
       savedSuccess: 'Backup saved to {path}',
+      savedSuccessWithFiles: 'Backup saved to {path}, plus {count} photo/logo file(s) in the folder next to it.',
       failed: 'Backup could not be saved.'
     },
     diagnostics: {
@@ -353,8 +356,9 @@ const en = {
     cooldown: {
       heading: 'Punch-card re-entry window',
       hint: "A card tapped again within this window checks the member back in without using another "
-        + "pass -- protects against an accidental double-tap. Doesn't apply to monthly members, who "
-        + "don't use passes. Set to 0 to turn this off.",
+        + "pass -- protects against an accidental double-tap, and applies even if that tap spent "
+        + "their last pass. The window counts from the tap that actually spent a pass. Doesn't apply "
+        + "to monthly members, who don't use passes. Set to 0 to turn this off.",
       noChargeWithin: 'No extra pass charged within',
       hours: 'hours',
       save: 'Save',

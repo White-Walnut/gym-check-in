@@ -34,8 +34,21 @@ class GymDatabase {
   constructor(databasePath) {
     this.databasePath = databasePath;
     this.db = new DatabaseSync(databasePath);
-    this.db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 3000;');
-    this.migrate();
+    // A failed open must not leave the file held. migrate() can legitimately refuse to proceed (see
+    // backupBeforeMigration), and the caller then shows an error and quits -- leaking the handle
+    // would keep the database locked in the meantime, which is precisely when someone is trying to
+    // copy that file somewhere safe by hand.
+    try {
+      this.db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 3000;');
+      this.migrate();
+    } catch (error) {
+      try {
+        this.db.close();
+      } catch {
+        // Already unusable -- the original failure below is the one worth reporting.
+      }
+      throw error;
+    }
   }
 
   migrate() {
@@ -133,24 +146,96 @@ class GymDatabase {
     }
   }
 
-  // Copies the live database file aside before an in-place schema rebuild. Best-effort: skipped for
-  // in-memory databases (tests, smoke-capture mode) and for a database file that doesn't exist yet
-  // (brand-new install, nothing to protect). A failure here is not fatal to migration -- we still log
-  // it so it's visible, but the app should keep starting; the rebuild itself remains atomic via its
-  // own transaction regardless of whether a backup could be made.
+  // --- Backups --------------------------------------------------------------------------------
+  // Writes a consistent snapshot of this database to `targetPath` and returns that path.
+  //
+  // The mechanism matters more than it looks. This database runs in WAL mode, so recently committed
+  // rows live in the -wal sidecar file until a checkpoint folds them back into the main file. A
+  // plain fs.copyFileSync of the database file therefore copies a REAL but STALE database: it opens
+  // perfectly and passes an integrity check while silently missing every committed change still in
+  // the WAL. That is what both backup paths used to do, which made "Export backup" and the
+  // pre-migration safety net capable of producing a file that looked fine and had none of today's
+  // members in it -- the worst possible failure for something staff trust their data to.
+  //
+  // VACUUM INTO asks SQLite itself for the snapshot, so it reflects the committed state of the
+  // database including the WAL, from the same connection that owns it. Two constraints come with
+  // it: it refuses to overwrite an existing file, and it cannot run inside a transaction. Hence the
+  // temp-then-rename below (which also means a failure never leaves a half-written file sitting at
+  // the path staff chose), and hence this must not be called from inside transaction().
+  //
+  // Copying the database file together with its -wal by hand is NOT the alternative to reach for
+  // here: https://sqlite.org/howtocorrupt.html covers why hand-copying is hazardous and points at
+  // the backup API / VACUUM INTO instead.
+  backupTo(targetPath) {
+    if (!this.databasePath || this.databasePath === ':memory:') throw new Error('backup_unavailable');
+    const temporaryPath = `${targetPath}.partial-${process.pid}-${Date.now()}`;
+    try {
+      fs.rmSync(temporaryPath, { force: true });
+      this.db.prepare('VACUUM INTO ?').run(temporaryPath);
+      this.verifyBackup(temporaryPath);
+      // rename replaces an existing target (an overwrite staff already confirmed in the save
+      // dialog) in one step. Deleting the old file first would mean a failure here left them with
+      // neither the backup they had nor the one they asked for.
+      fs.renameSync(temporaryPath, targetPath);
+      return targetPath;
+    } catch (error) {
+      fs.rmSync(temporaryPath, { force: true });
+      throw error;
+    }
+  }
+
+  // Proves the snapshot is actually usable before it is allowed to count as a backup, because the
+  // failure this guards against is a backup that opens fine and is missing data. Opens it as its own
+  // read-only database, runs SQLite's integrity check, and compares the row count of every user
+  // table against the live one -- which is the specific assertion a stale WAL-less copy fails.
+  verifyBackup(snapshotPath) {
+    const snapshot = new DatabaseSync(snapshotPath, { readOnly: true });
+    try {
+      const integrity = snapshot.prepare('PRAGMA integrity_check').get();
+      const verdict = integrity?.integrity_check;
+      if (verdict !== 'ok') throw new Error(`snapshot failed SQLite's integrity check: ${verdict}`);
+
+      const tables = this.db.prepare(`
+        SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+      `).all().map((row) => row.name);
+      for (const table of tables) {
+        const live = this.db.prepare(`SELECT COUNT(*) AS n FROM "${table}"`).get().n;
+        const copied = snapshot.prepare(`SELECT COUNT(*) AS n FROM "${table}"`).get().n;
+        if (copied !== live) {
+          throw new Error(`snapshot is missing rows: ${table} has ${live} row(s) live but ${copied} in the copy`);
+        }
+      }
+    } finally {
+      snapshot.close();
+    }
+  }
+
+  // Snapshots the live database aside before an in-place schema rebuild, and returns that path.
+  // Skipped only where there is genuinely nothing to protect: an in-memory database (tests, smoke
+  // capture) or a database file that does not exist yet (brand-new install).
+  //
+  // A failure here IS fatal, deliberately. This used to log and carry on, which meant a schema
+  // rebuild could run against a member database with no usable backup behind it while everything
+  // looked normal -- a failed safety net counting as protection. The rebuild is atomic in its own
+  // transaction, but atomic is not the same as recoverable: if the rebuild's own data-copying logic
+  // is wrong, the transaction commits the damage. Throwing leaves the database untouched and
+  // surfaces through main.js's startup dialog, so someone can copy the file aside by hand and get
+  // help, instead of discovering afterwards that there was nothing to go back to.
   backupBeforeMigration() {
     if (!this.databasePath || this.databasePath === ':memory:') return null;
     if (!fs.existsSync(this.databasePath)) return null;
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const directory = path.dirname(this.databasePath);
+    const base = path.basename(this.databasePath, path.extname(this.databasePath));
+    const backupPath = path.join(directory, `${base}.pre-migration-${stamp}.sqlite`);
     try {
-      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const directory = path.dirname(this.databasePath);
-      const base = path.basename(this.databasePath, path.extname(this.databasePath));
-      const backupPath = path.join(directory, `${base}.pre-migration-${stamp}.sqlite`);
-      fs.copyFileSync(this.databasePath, backupPath);
-      return backupPath;
+      return this.backupTo(backupPath);
     } catch (error) {
-      console.error('Could not create a pre-migration backup:', error);
-      return null;
+      throw new Error(
+        'The database needs a schema upgrade, but no verified backup could be made first, '
+        + 'so the upgrade was not started and your data has not been changed. '
+        + `Reason: ${error.message}`
+      );
     }
   }
 
@@ -551,11 +636,15 @@ class GymDatabase {
   }
 
   // Everything held about one member, for responding to a GDPR access/portability request. Includes
-  // full check-in and subscription history, not just the current member row.
+  // full check-in and subscription history, not just the current member row. This is the one read
+  // that deliberately uses the historical lookup rather than the active one: a request about a
+  // member who has since been deleted should still return what is actually still held about them
+  // (their anonymized row plus their retained history), which is the honest answer to "what do you
+  // have on me". It is read-only -- mutations all go through the active lookup.
   exportMemberData(memberId) {
     const id = Number(memberId);
     if (!Number.isInteger(id) || id < 1) throw new Error('invalid_member');
-    const member = this.getMemberById(id);
+    const member = this.getMemberRecordById(id);
     if (!member) throw new Error('member_not_found');
     const checkIns = this.db.prepare(`
       SELECT checked_in_at AS checkedInAt, allowed, reason
@@ -595,26 +684,38 @@ class GymDatabase {
       } else if (member.membership_type === 'monthly' && (!member.valid_until || member.valid_until < today)) {
         allowed = false;
         reason = 'expired';
-      } else if (member.membership_type === 'punchcard' && member.passes_remaining <= 0) {
-        allowed = false;
-        reason = 'no_passes';
       }
 
+      // Membership status (frozen/cancelled) is settled above and always wins. The punch-card
+      // balance is NOT settled above, deliberately: the re-entry window has to be evaluated first,
+      // because the member whose paid entry spent their LAST pass is exactly the one the window is
+      // supposed to cover. Rejecting on a zero balance before looking at the window denied them
+      // re-entry a minute after walking out -- while Settings promises that repeat entry inside the
+      // window does not spend another pass -- so the zero-balance rejection now lives here, after
+      // the window check, as the fallback for someone with no qualifying paid entry to re-enter on.
       if (allowed && member.membership_type === 'punchcard') {
         const cooldownHours = this.getPunchcardCooldownHours();
-        // Only a genuine PRIOR successful punch-card entry re-arms this -- a member who was denied
-        // (frozen, cancelled, no passes) last time around gets evaluated fresh, not silently let in
-        // just because they tapped again recently. SQLite's own CURRENT_TIMESTAMP default (what
-        // recordCheckIn's checked_in_at actually holds) is UTC 'YYYY-MM-DD HH:MM:SS'; matching that
-        // format exactly here keeps this a plain string comparison, not a timezone-sensitive parse.
-        const cooldownActive = cooldownHours > 0 && this.db.prepare(`
+        // Only a genuine PRIOR PAID punch-card entry ('punchcard', never 'punchcard_recent') re-arms
+        // this, and the window stays anchored to that paid entry rather than sliding forward on each
+        // free re-entry. Two reasons: a member who was denied last time (frozen, cancelled, no
+        // passes) gets evaluated fresh instead of being let in just because they tapped recently;
+        // and a sliding window would let a member with zero passes stay inside indefinitely by
+        // re-tapping within every window, since each free entry would extend their own eligibility.
+        // Anchored, the window means what it says -- one paid visit, plus a grace period on it.
+        // SQLite's own CURRENT_TIMESTAMP default (what recordCheckIn's checked_in_at actually holds)
+        // is UTC 'YYYY-MM-DD HH:MM:SS'; matching that format exactly here keeps this a plain string
+        // comparison, not a timezone-sensitive parse.
+        const withinWindow = cooldownHours > 0 && this.db.prepare(`
           SELECT 1 FROM check_ins
-          WHERE member_id = ? AND allowed = 1 AND reason IN ('punchcard', 'punchcard_recent') AND checked_in_at > ?
+          WHERE member_id = ? AND allowed = 1 AND reason = 'punchcard' AND checked_in_at > ?
           LIMIT 1
         `).get(member.id, new Date(now.getTime() - cooldownHours * 3600 * 1000).toISOString().slice(0, 19).replace('T', ' '));
 
-        if (cooldownActive) {
+        if (withinWindow) {
           reason = 'punchcard_recent'; // let back in, but no pass charged for what's the same visit
+        } else if (member.passes_remaining <= 0) {
+          allowed = false;
+          reason = 'no_passes';
         } else {
           const update = this.db.prepare(`
             UPDATE members SET passes_remaining = passes_remaining - 1, updated_at = CURRENT_TIMESTAMP
@@ -714,13 +815,30 @@ class GymDatabase {
           ? `Converted from monthly via edit (${discard.daysLost} ${discard.daysLost === 1 ? 'day' : 'days'} forfeited)`
           : null;
 
-      // A human just explicitly chose this end date, so it redefines the billing anchor -- unlike
-      // the system's own "+1 month" computation, which preserves whatever anchor is already on file.
-      // The anchor is the day-of-month this period *starts* (mirroring addMember/renewMember), not
-      // the day-of-month staff happened to type as the end date.
+      // Anchor rule for an edit, in one sentence: the stored anchor moves only when staff actually
+      // change the membership terms.
+      //
+      // An edit dialog submits every field it holds, including the ones nobody touched, so "staff
+      // saved this form" is not the same event as "staff changed this membership". Re-deriving the
+      // anchor unconditionally meant a name correction silently re-anchored the member: fixing a
+      // typo on a Jan-31 monthly member (whose first period visibly ends Feb 27) moved their anchor
+      // from day 31 to day 28, and their *next* renewal then landed three days early -- a billing
+      // change nobody asked for, from an edit that touched nothing but a name.
+      //
+      // So: an unchanged monthly membership (same type, same end date) keeps whatever anchor is on
+      // file. A genuine change -- a staff-chosen end date, or a conversion into monthly from a punch
+      // card -- still re-anchors deliberately, to the day-of-month this period *starts* (mirroring
+      // addMember/renewMember), not the day staff happened to type as the end date. Legacy monthly
+      // rows with no stored anchor fall through to that same derivation, since there is nothing to
+      // preserve. Punch cards have no anchor at all.
       const previousEnd = existing.membership_type === 'monthly' ? existing.valid_until : null;
       const periodStart = previousEnd && previousEnd >= today ? addDays(previousEnd, 1) : today;
-      const anchorDay = membershipType === 'monthly' ? Number(periodStart.split('-')[2]) : null;
+      const termsUnchanged = membershipType === 'monthly'
+        && existing.membership_type === 'monthly'
+        && validUntil === existing.valid_until;
+      const anchorDay = membershipType !== 'monthly'
+        ? null
+        : (termsUnchanged && existing.billing_anchor_day) || Number(periodStart.split('-')[2]);
 
       this.db.prepare(`
         UPDATE members SET card_uid = ?, first_name = ?, last_name = ?,
@@ -892,7 +1010,7 @@ class GymDatabase {
     const id = Number(memberId);
     if (!Number.isInteger(id) || id < 1) throw new Error('invalid_member');
     return this.transaction(() => {
-      const existing = this.db.prepare('SELECT photo_path FROM members WHERE id = ?').get(id);
+      const existing = this.db.prepare('SELECT photo_path FROM members WHERE id = ? AND deleted_at IS NULL').get(id);
       if (!existing) throw new Error('member_not_found');
       this.db.prepare('UPDATE members SET photo_path = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
         .run(photoPath, id);
@@ -900,17 +1018,43 @@ class GymDatabase {
     });
   }
 
+  // --- Member lookup --------------------------------------------------------------------------
+  // Two deliberately different lookups, because a soft-deleted member is not the same thing as a
+  // missing one. deleteMember anonymizes the row and stamps deleted_at rather than removing it, so
+  // that attendance and revenue history stays attributable (see the comment there) -- but the row
+  // is still physically present and still has an id somebody may be holding.
+  //
+  // getMemberById/getMemberByUid are the ACTIVE-member lookups, and every mutation path uses them:
+  // check-in, edit, renewal, photo. They exclude deleted rows so a stale id cannot be used to
+  // resurrect or bill a member who was deleted -- previously a renewal against a saved id happily
+  // reactivated the anonymized row and wrote a fresh subscription against it, instead of reporting
+  // member_not_found. getMemberRecordById is the HISTORICAL lookup, used where reaching a deleted
+  // row is the whole point (a GDPR data export), never to write.
+  //
+  // Card UIDs are guarded here too, for consistency rather than reachability: a deleted row's
+  // placeholder "DELETED-<id>" already cannot be produced by a reader, because UID normalisation
+  // strips the hyphen out of anything a scan can send.
   getMemberByUid(uid) {
     return this.db.prepare(`
       SELECT id, card_uid, first_name, last_name, photo_path, membership_status,
-             membership_type, valid_until, passes_remaining, billing_anchor_day FROM members WHERE card_uid = ?
+             membership_type, valid_until, passes_remaining, billing_anchor_day
+      FROM members WHERE card_uid = ? AND deleted_at IS NULL
     `).get(uid);
   }
 
   getMemberById(id) {
     return this.db.prepare(`
       SELECT id, card_uid, first_name, last_name, photo_path, membership_status,
-             membership_type, valid_until, passes_remaining, billing_anchor_day FROM members WHERE id = ?
+             membership_type, valid_until, passes_remaining, billing_anchor_day
+      FROM members WHERE id = ? AND deleted_at IS NULL
+    `).get(id);
+  }
+
+  getMemberRecordById(id) {
+    return this.db.prepare(`
+      SELECT id, card_uid, first_name, last_name, photo_path, membership_status,
+             membership_type, valid_until, passes_remaining, billing_anchor_day, deleted_at
+      FROM members WHERE id = ?
     `).get(id);
   }
 

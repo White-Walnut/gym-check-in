@@ -735,3 +735,335 @@ test('setMemberPhoto updates photo_path and returns the previous value', () => {
   assert.equal(database.getMemberById(member.id).photo_path, '/userdata/photos/1-456.jpg');
   database.close();
 });
+
+// --- Beta-readiness regressions (see BETA_READINESS_REVIEW_2026-09-07.md) ----------------------
+// One test per confirmed defect from that review, written from its reproduction steps.
+
+test('a backup taken while committed writes are still in the WAL contains them', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'gym-checkin-test-'));
+  const databasePath = path.join(directory, 'live.sqlite');
+  const database = new GymDatabase(databasePath);
+  const now = new Date('2026-09-07T12:00:00');
+
+  const member = database.addMember({
+    cardUid: 'WAL00001', firstName: 'Wal', lastName: 'Member',
+    membershipType: 'monthly', validUntil: '2026-10-06', amountCents: 5000
+  }, now);
+  database.setMemberPhoto(member.id, path.join(directory, 'photos', '1-123.jpg'));
+  database.checkIn('WAL00001', now);
+  database.renewMember(member.id, 'monthly', { amountCents: 4500 }, now);
+
+  // The state that matters: the database is still open and those commits are sitting in the -wal
+  // sidecar, which is exactly what a plain copy of the .sqlite file silently leaves behind.
+  assert.ok(fs.existsSync(databasePath + '-wal'), 'expected a WAL sidecar to exist');
+
+  const target = path.join(directory, 'backup.sqlite');
+  assert.equal(database.backupTo(target), target);
+  assert.equal(fs.readdirSync(directory).filter((name) => name.includes('.partial-')).length, 0);
+
+  // "Restore" = open the backup the way the app itself would, then check the things staff would
+  // actually miss -- balances, payments, history, photo paths -- not merely that SQLite opens it.
+  const restored = new GymDatabase(target);
+  const restoredMember = restored.searchMembers('Wal')[0];
+  assert.equal(restoredMember.cardUid, 'WAL00001');
+  assert.equal(restoredMember.validUntil, '2026-11-06');
+  assert.equal(restoredMember.photoPath, path.join(directory, 'photos', '1-123.jpg'));
+  assert.equal(restored.getMemberById(restoredMember.id).billing_anchor_day, 7);
+  assert.equal(restored.db.prepare('SELECT COUNT(*) AS n FROM subscriptions').get().n, 2);
+  assert.equal(restored.db.prepare('SELECT COALESCE(SUM(amount_cents), 0) AS total FROM subscriptions').get().total, 9500);
+  assert.equal(restored.db.prepare('SELECT COUNT(*) AS n FROM check_ins').get().n, 1);
+  assert.equal(restored.db.prepare('PRAGMA integrity_check').get().integrity_check, 'ok');
+  assert.deepEqual(restored.db.prepare('PRAGMA foreign_key_check').all(), []);
+
+  restored.close();
+  database.close();
+  fs.rmSync(directory, { recursive: true, force: true });
+});
+
+test('a backup that cannot be written fails loudly and leaves no partial file behind', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'gym-checkin-test-'));
+  const databasePath = path.join(directory, 'live.sqlite');
+
+  const memory = new GymDatabase(':memory:');
+  assert.throws(() => memory.backupTo(path.join(directory, 'from-memory.sqlite')), /backup_unavailable/);
+  memory.close();
+
+  const database = new GymDatabase(databasePath);
+  database.addMember({
+    cardUid: 'PARTIAL1', firstName: 'Partial', lastName: 'Member',
+    membershipType: 'punchcard', passesRemaining: 3
+  });
+  // A target inside a directory that does not exist: SQLite cannot open the output file.
+  assert.throws(() => database.backupTo(path.join(directory, 'no-such-folder', 'backup.sqlite')));
+  // Nothing half-written left lying around afterwards to be mistaken for a backup.
+  assert.equal(fs.readdirSync(directory).filter((name) => name.includes('.partial-')).length, 0);
+
+  database.close();
+  fs.rmSync(directory, { recursive: true, force: true });
+});
+
+test('a schema upgrade does not run at all when no verified backup can be made', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'gym-checkin-test-'));
+  const databasePath = path.join(directory, 'legacy.sqlite');
+  const legacy = new DatabaseSync(databasePath);
+  legacy.exec('CREATE TABLE members (id INTEGER PRIMARY KEY, card_uid TEXT NOT NULL UNIQUE,'
+    + ' first_name TEXT NOT NULL, last_name TEXT NOT NULL, photo_path TEXT,'
+    + ' membership_status TEXT NOT NULL, valid_until TEXT NOT NULL,'
+    + ' created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,'
+    + ' updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);');
+  legacy.exec('INSERT INTO members (id, card_uid, first_name, last_name, membership_status, valid_until)'
+    + " VALUES (1, 'NOBACKUP', 'No', 'Backup', 'active', '2099-01-01');");
+  legacy.close();
+
+  const realBackupTo = GymDatabase.prototype.backupTo;
+  GymDatabase.prototype.backupTo = () => { throw new Error('disk full'); };
+  try {
+    assert.throws(() => new GymDatabase(databasePath), /no verified backup could be made/);
+  } finally {
+    GymDatabase.prototype.backupTo = realBackupTo;
+  }
+
+  // Refusing has to mean refusing: the legacy database still has its old schema and its row, so
+  // whoever hits this can copy the file aside by hand instead of finding out afterwards that a
+  // rebuild ran with nothing behind it.
+  const after = new DatabaseSync(databasePath);
+  const columns = after.prepare('PRAGMA table_info(members)').all().map((column) => column.name);
+  assert.equal(columns.includes('membership_type'), false);
+  assert.equal(after.prepare('SELECT COUNT(*) AS n FROM members').get().n, 1);
+  after.close();
+  fs.rmSync(directory, { recursive: true, force: true });
+});
+
+test('a name-only edit preserves the billing anchor, so it cannot shorten the next renewal', () => {
+  const database = new GymDatabase(':memory:');
+  const signup = new Date('2026-01-31T12:00:00');
+  // Two identical Jan-31 monthly memberships: one gets a name correction, the other is the control.
+  const edited = database.addMember({
+    cardUid: 'NAMEEDIT', firstName: 'Jamie', lastName: 'Month',
+    membershipType: 'monthly', validUntil: '2026-02-27'
+  }, signup);
+  const control = database.addMember({
+    cardUid: 'NAMECTRL', firstName: 'Jamie', lastName: 'Control',
+    membershipType: 'monthly', validUntil: '2026-02-27'
+  }, signup);
+  assert.equal(database.getMemberById(edited.id).billing_anchor_day, 31);
+
+  // Nothing about the membership changes here -- only a first name.
+  database.updateMember({
+    id: edited.id, firstName: 'Jamey', lastName: 'Month', cardUid: 'NAMEEDIT',
+    membershipStatus: 'active', membershipType: 'monthly', validUntil: '2026-02-27'
+  }, new Date('2026-02-01T12:00:00'));
+  assert.equal(database.getMemberById(edited.id).first_name, 'Jamey');
+  assert.equal(database.getMemberById(edited.id).billing_anchor_day, 31); // was silently reset to 28
+  // A name correction is not a payment either, so it must not have logged a renewal.
+  assert.equal(database.db.prepare('SELECT COUNT(*) AS n FROM subscriptions WHERE member_id = ?').get(edited.id).n, 1);
+
+  const renewedAt = new Date('2026-02-10T12:00:00');
+  const afterEdit = database.renewMember(edited.id, 'monthly', {}, renewedAt);
+  const afterControl = database.renewMember(control.id, 'monthly', {}, renewedAt);
+  // The edited member used to land on 2026-03-27: three days short of the untouched control.
+  assert.equal(afterEdit.validUntil, '2026-03-30');
+  assert.equal(afterControl.validUntil, afterEdit.validUntil);
+
+  database.close();
+});
+
+test('a leap-day membership survives a name-only edit with its anchor intact', () => {
+  const database = new GymDatabase(':memory:');
+  const member = database.addMember({
+    cardUid: 'LEAPEDIT', firstName: 'Leap', lastName: 'Member',
+    membershipType: 'monthly', validUntil: '2024-03-28'
+  }, new Date('2024-02-29T12:00:00'));
+  assert.equal(database.getMemberById(member.id).billing_anchor_day, 29);
+
+  database.updateMember({
+    id: member.id, firstName: 'Leap', lastName: 'Corrected', cardUid: 'LEAPEDIT',
+    membershipStatus: 'active', membershipType: 'monthly', validUntil: '2024-03-28'
+  }, new Date('2024-03-01T12:00:00'));
+  assert.equal(database.getMemberById(member.id).billing_anchor_day, 29);
+
+  // The next period starts Mar 29 and runs to the day before Apr 29.
+  const renewed = database.renewMember(member.id, 'monthly', {}, new Date('2024-03-10T12:00:00'));
+  assert.equal(renewed.validUntil, '2024-04-28');
+  database.close();
+});
+
+test('an edit that actually changes the end date still re-anchors deliberately', () => {
+  const database = new GymDatabase(':memory:');
+  const member = database.addMember({
+    cardUid: 'DATEEDIT', firstName: 'Date', lastName: 'Member',
+    membershipType: 'monthly', validUntil: '2026-02-27'
+  }, new Date('2026-01-31T12:00:00'));
+  assert.equal(database.getMemberById(member.id).billing_anchor_day, 31);
+
+  // Staff extend this member by hand: a real change to the terms, so the anchor follows the new
+  // period's start (Feb 28, the day after the previous end) exactly as it did before this fix.
+  database.updateMember({
+    id: member.id, firstName: 'Date', lastName: 'Member', cardUid: 'DATEEDIT',
+    membershipStatus: 'active', membershipType: 'monthly', validUntil: '2026-03-15'
+  }, new Date('2026-02-01T12:00:00'));
+  assert.equal(database.getMemberById(member.id).billing_anchor_day, 28);
+  assert.equal(database.getMemberById(member.id).valid_until, '2026-03-15');
+  database.close();
+});
+
+test('the punch-card re-entry window still applies when the last pass was just spent', () => {
+  const database = new GymDatabase(':memory:');
+  database.setPunchcardCooldownHours(2);
+  const member = database.addMember({
+    cardUid: 'LASTPASS', firstName: 'Last', lastName: 'Pass',
+    membershipType: 'punchcard', passesRemaining: 1
+  });
+
+  const paid = new Date('2026-01-05T12:00:00Z');
+  const minutesLater = (minutes) => new Date(paid.getTime() + minutes * 60 * 1000);
+
+  const first = database.checkIn('LASTPASS', paid);
+  assert.equal(first.allowed, true);
+  assert.equal(first.reason, 'punchcard');
+  assert.equal(first.member.passesRemaining, 0);
+
+  // The regression: this was denied with no_passes, because the zero balance was rejected before
+  // the re-entry window was ever consulted -- while Settings promises re-entry costs no pass.
+  const reentry = database.checkIn('LASTPASS', minutesLater(1));
+  assert.equal(reentry.allowed, true);
+  assert.equal(reentry.reason, 'punchcard_recent');
+  assert.equal(reentry.member.passesRemaining, 0);
+  assert.equal(database.getMemberById(member.id).passes_remaining, 0);
+
+  // Once the window has passed, a member with no passes is denied normally again.
+  const later = database.checkIn('LASTPASS', minutesLater(2 * 60 + 1));
+  assert.equal(later.allowed, false);
+  assert.equal(later.reason, 'no_passes');
+
+  // And with the window turned off, an empty card is denied immediately -- there is no window for
+  // the zero-balance check to defer to.
+  database.setPunchcardCooldownHours(0);
+  const disabled = database.checkIn('LASTPASS', minutesLater(2 * 60 + 2));
+  assert.equal(disabled.allowed, false);
+  assert.equal(disabled.reason, 'no_passes');
+
+  database.close();
+});
+
+test('free re-entries do not extend the window, so a zero-pass member cannot stay in indefinitely', () => {
+  const database = new GymDatabase(':memory:');
+  database.setPunchcardCooldownHours(3);
+  database.addMember({
+    cardUid: 'NOEXTEND', firstName: 'No', lastName: 'Extend',
+    membershipType: 'punchcard', passesRemaining: 1
+  });
+
+  const paid = new Date('2026-01-05T12:00:00Z');
+  const hoursLater = (hours) => new Date(paid.getTime() + hours * 3600 * 1000);
+
+  assert.equal(database.checkIn('NOEXTEND', paid).reason, 'punchcard'); // spends the last pass
+  assert.equal(database.checkIn('NOEXTEND', hoursLater(2)).reason, 'punchcard_recent'); // free re-entry
+
+  // 1.5 hours after that free re-entry, but 3.5 hours after the entry that was actually paid for.
+  // The window is anchored to the paid entry, so this is a new visit with nothing left to pay for
+  // it. A window that slid forward on each free entry would have let this repeat forever.
+  const third = database.checkIn('NOEXTEND', hoursLater(3.5));
+  assert.equal(third.allowed, false);
+  assert.equal(third.reason, 'no_passes');
+
+  database.close();
+});
+
+test('frozen and cancelled members are denied even inside the re-entry window', () => {
+  const database = new GymDatabase(':memory:');
+  const member = database.addMember({
+    cardUid: 'FROZENRE', firstName: 'Frozen', lastName: 'Reentry',
+    membershipType: 'punchcard', passesRemaining: 1
+  });
+  const paid = new Date('2026-01-05T12:00:00Z');
+  assert.equal(database.checkIn('FROZENRE', paid).reason, 'punchcard');
+
+  const setStatus = (status) => database.updateMember({
+    id: member.id, firstName: 'Frozen', lastName: 'Reentry', cardUid: 'FROZENRE',
+    membershipStatus: status, membershipType: 'punchcard', passesRemaining: 0
+  });
+
+  setStatus('frozen');
+  const frozen = database.checkIn('FROZENRE', new Date(paid.getTime() + 30 * 60 * 1000));
+  assert.equal(frozen.allowed, false);
+  assert.equal(frozen.reason, 'frozen');
+
+  setStatus('cancelled');
+  const cancelled = database.checkIn('FROZENRE', new Date(paid.getTime() + 40 * 60 * 1000));
+  assert.equal(cancelled.allowed, false);
+  assert.equal(cancelled.reason, 'cancelled');
+
+  database.close();
+});
+
+test('impossible calendar dates are rejected on add, edit and custom renewal', () => {
+  const database = new GymDatabase(':memory:');
+  const now = new Date('2026-02-01T12:00:00');
+
+  assert.throws(() => database.addMember({
+    cardUid: 'BADDATE1', firstName: 'Bad', lastName: 'Date',
+    membershipType: 'monthly', validUntil: '2026-02-30'
+  }, now), /invalid_date/);
+  assert.throws(() => database.addMember({
+    cardUid: 'BADDATE2', firstName: 'Bad', lastName: 'Date',
+    membershipType: 'monthly', validUntil: '2026-02-29' // 2026 is not a leap year
+  }, now), /invalid_date/);
+  assert.equal(database.searchMembers('Bad').length, 0);
+
+  // The leap day of a year that actually has one is a real date, and still accepted.
+  const member = database.addMember({
+    cardUid: 'GOODDATE', firstName: 'Good', lastName: 'Date',
+    membershipType: 'monthly', validUntil: '2024-02-29'
+  }, new Date('2024-02-01T12:00:00'));
+  assert.equal(member.validUntil, '2024-02-29');
+
+  assert.throws(() => database.updateMember({
+    id: member.id, firstName: 'Good', lastName: 'Date', cardUid: 'GOODDATE',
+    membershipStatus: 'active', membershipType: 'monthly', validUntil: '2026-04-31'
+  }, now), /invalid_date/);
+  assert.throws(() => database.renewMember(member.id, 'monthly', { validUntil: '2026-06-31' }, now), /invalid_date/);
+
+  // None of those rejections left a normalised date behind on the member.
+  assert.equal(database.getMemberById(member.id).valid_until, '2024-02-29');
+  database.close();
+});
+
+test('a soft-deleted member cannot be renewed, edited or re-photographed by a stale id', () => {
+  const database = new GymDatabase(':memory:');
+  const now = new Date('2026-09-07T12:00:00');
+  const member = database.addMember({
+    cardUid: 'STALEID1', firstName: 'Stale', lastName: 'Member',
+    membershipType: 'monthly', validUntil: '2026-10-06'
+  }, now);
+  database.checkIn('STALEID1', now);
+  database.deleteMember(member.id);
+
+  // The regression: this used to succeed, reactivating the anonymized row and writing a fresh
+  // subscription against a member who had been deleted.
+  assert.throws(() => database.renewMember(member.id, 'monthly', {}, new Date('2026-09-08T12:00:00')), /member_not_found/);
+  assert.throws(() => database.updateMember({
+    id: member.id, firstName: 'Back', lastName: 'Again', cardUid: 'STALEID1',
+    membershipStatus: 'active', membershipType: 'monthly', validUntil: '2026-12-01'
+  }, new Date('2026-09-08T12:00:00')), /member_not_found/);
+  assert.throws(() => database.setMemberPhoto(member.id, '/userdata/photos/9-9.jpg'), /member_not_found/);
+
+  // Nothing was written: the row stays deleted, anonymized and with no access.
+  const raw = database.db.prepare('SELECT * FROM members WHERE id = ?').get(member.id);
+  assert.equal(raw.first_name, 'Deleted');
+  assert.equal(raw.membership_status, 'cancelled');
+  assert.equal(raw.valid_until, null);
+  assert.ok(raw.deleted_at);
+  assert.equal(database.db.prepare('SELECT COUNT(*) AS n FROM subscriptions WHERE member_id = ?').get(member.id).n, 1);
+
+  // The active lookup no longer reaches them; the historical one deliberately still does, which is
+  // what keeps a GDPR data request answerable after a deletion.
+  assert.equal(database.getMemberById(member.id), undefined);
+  assert.equal(database.getMemberRecordById(member.id).first_name, 'Deleted');
+  const exported = database.exportMemberData(member.id);
+  assert.equal(exported.member.name, 'Deleted Member');
+  assert.equal(exported.checkIns.length, 1);
+  assert.equal(exported.subscriptions.length, 1);
+
+  database.close();
+});

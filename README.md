@@ -26,9 +26,12 @@ Demo cards:
 - `10000004`: empty punch card, denied
 - Any other UID: unknown card, denied
 
-Existing databases are migrated automatically, and a timestamped backup copy
+Existing databases are migrated automatically, and a timestamped, verified snapshot
 (`gym-checkin.pre-migration-<timestamp>.sqlite`, next to the live database) is made just before any
-in-place schema upgrade runs. The demo-data version is also upgraded once so installations created by
+in-place schema upgrade runs -- see **Backup** below for what "verified" means here. If that snapshot
+can't be made, the upgrade does not run at all: the app reports why and refuses to start, leaving the
+database untouched, rather than rebuilding a schema with no safety net behind it. The demo-data
+version is also upgraded once so installations created by
 version 1 receive the corrected demo cards; it does not reset punch-card balances on later launches.
 A one-time repair also runs automatically if a past migration (versions up to 1.8.0) left the payment
 history table's internal reference pointing at a table it had already cleaned up -- harmless to run,
@@ -184,10 +187,36 @@ day (e.g. `2026-08-28` through `2026-09-27`). When the target month is too short
 day 31 in February), it's clamped to the target month's last day before subtracting one.
 
 Each monthly member has a `billing_anchor_day` -- the day-of-month their cycle is meant to land on,
-recorded when they sign up (or whenever staff explicitly picks a new end date) and preserved across
-automatic "+1 month" renewals. This means a short month (like February) doesn't permanently drag a
-member's billing day down in later months: a member anchored to day 31 who gets clamped to day 27 in
-February is still computed against day 31 again in March, not against 27.
+recorded when they sign up and preserved across automatic "+1 month" renewals. This means a short
+month (like February) doesn't permanently drag a member's billing day down in later months: a member
+anchored to day 31 who gets clamped to day 27 in February is still computed against day 31 again in
+March, not against 27.
+
+The anchor moves only when the membership terms actually change -- staff picking a new end date, or a
+punch card being converted to monthly. Saving the Edit form without touching the end date or plan
+type (fixing a name, correcting a card UID, freezing a member) leaves it exactly as it was. A
+renewal after a long lapse is the one automatic exception: a membership that already expired is a
+fresh start from today, so it re-anchors to today rather than dragging a years-old billing day back
+in.
+
+### Punch-card re-entry window
+
+A punch card charges one pass per scan, so an accidental second tap (walking straight back in,
+someone bumping the reader, a member forgetting they already tapped) would otherwise burn a second
+pass for what was really one visit. Within the window set in **Settings** (default 3 hours), a
+punch-card member who taps again is let in with **no pass charged**, shown as "Already checked in
+recently". Monthly members are unaffected -- they don't spend passes either way.
+
+Two details worth knowing at the desk:
+
+- It applies **on the last pass too**. A member who spends their final pass can still come back
+  inside the window; they're admitted with 0 passes remaining (the pill shows `0`, which is the cue
+  to sell them a new card).
+- The window is anchored to the entry that was **paid for**, and free re-entries don't extend it.
+  Three hours after the paid tap, the next scan is a new visit and needs a pass -- so a member with
+  an empty card can't stay in indefinitely by re-tapping inside every window.
+
+Setting the window to 0 hours turns it off entirely: every scan then spends a pass.
 
 ## Check-in notifications
 
@@ -304,8 +333,35 @@ you.
 ## Backup
 
 **Settings** inside the staff area has an **Export backup** button, which saves a copy of the live
-database to a location you choose. There's no in-app *restore* -- to restore a backup, close the app
-and replace `gym-checkin.sqlite` (see the path above) with the backup file, then relaunch.
+database to a location you choose.
+
+The copy is taken as a real SQLite snapshot (`VACUUM INTO`), not a file copy, and is verified before
+it counts as a backup: it's opened again, integrity-checked, and every table's row count is compared
+against the live database. That matters because the database runs in WAL mode -- recent commits live
+in a `-wal` sidecar file until SQLite folds them in, so *copying the `.sqlite` file* produces a
+database that opens perfectly and is missing everything recent, which is exactly the kind of backup
+nobody discovers is empty until they need it.
+
+A backup has two halves. Member photos and your gym logo are files on disk rather than database
+rows, so they're copied into a folder next to the snapshot -- `gym-checkin-backup-<date>-files/`,
+with `photos/` and `branding/` inside. The status message says how many files went with it. Keep the
+folder and the `.sqlite` file together; a database-only backup restores every member with a missing
+photo.
+
+There's no in-app *restore*. To restore:
+
+1. Close the app.
+2. Replace `gym-checkin.sqlite` (see the path above) with the backup file. Delete any
+   `gym-checkin.sqlite-wal` and `gym-checkin.sqlite-shm` files sitting next to it -- they belong to
+   the database you're replacing, not to the backup.
+3. Copy the contents of `photos/` and `branding/` from the backup's `-files` folder back into
+   `photos\` and `branding\` in the same app-data folder.
+4. Relaunch.
+
+Photo paths are stored as absolute paths, so a restore into the same app-data folder on the same PC
+puts every photo back where the database expects it. Restoring onto a *different* machine or user
+profile can leave photos unresolved even though the members and their balances are fine -- worth
+testing on the target machine rather than assuming, if that's the recovery plan.
 
 ## Diagnostics
 

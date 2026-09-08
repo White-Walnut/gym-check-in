@@ -298,9 +298,12 @@ const cs = {
     },
     backup: {
       heading: 'Záloha',
-      hint: 'Uložte kopii databáze členů na místo dle vašeho výběru.',
+      hint: 'Uložte kopii databáze členů na místo dle vašeho výběru. Fotky členů a logo vaší '
+        + 'posilovny jsou soubory na disku, nikoli záznamy v databázi, a proto se ukládají do složky '
+        + 'vedle zálohy -- uchovávejte je pohromadě.',
       exportButton: 'Exportovat zálohu…',
       savedSuccess: 'Záloha uložena do {path}',
+      savedSuccessWithFiles: 'Záloha uložena do {path} a {count} soubor(ů) fotek/loga do složky vedle ní.',
       failed: 'Zálohu se nepodařilo uložit.'
     },
     diagnostics: {
@@ -341,8 +344,9 @@ const cs = {
     cooldown: {
       heading: 'Okno opětovného vstupu',
       hint: 'Přiložení karty v tomto okně znovu odbaví člena bez odečtení dalšího vstupu -- chrání '
-        + 'proti nechtěnému dvojímu přiložení. Netýká se měsíčních členství, která vstupy nepoužívají. '
-        + 'Nastavením na 0 tuto funkci vypnete.',
+        + 'proti nechtěnému dvojímu přiložení a platí i tehdy, pokud tímto přiložením vyčerpal '
+        + 'poslední vstup. Okno se počítá od přiložení, při kterém byl vstup skutečně odečten. '
+        + 'Netýká se měsíčních členství, která vstupy nepoužívají. Nastavením na 0 tuto funkci vypnete.',
       noChargeWithin: 'Bez odečtení vstupu do',
       hours: 'hodin',
       save: 'Uložit',

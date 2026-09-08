@@ -417,7 +417,7 @@
 
             <div class="settings-block">
               <h3 data-i18n="settings.backup.heading">Backup</h3>
-              <p class="settings-hint" data-i18n="settings.backup.hint">Save a copy of the member database to a location of your choice.</p>
+              <p class="settings-hint" data-i18n="settings.backup.hint">Save a copy of the member database to a location of your choice. Member photos and your gym logo are files on disk rather than database entries, so they are saved into a folder next to the backup -- keep the two together.</p>
               <button id="export-backup-button" class="renew-button" type="button" data-i18n="settings.backup.exportButton">Export backup…</button>
               <p id="backup-status" class="form-status" role="status"></p>
             </div>
@@ -486,8 +486,10 @@
               <h3 data-i18n="settings.cooldown.heading">Punch-card re-entry window</h3>
               <p class="settings-hint" data-i18n="settings.cooldown.hint">
                 A card tapped again within this window checks the member back in without using
-                another pass -- protects against an accidental double-tap. Doesn't apply to monthly
-                members, who don't use passes. Set to 0 to turn this off.
+                another pass -- protects against an accidental double-tap, and applies even if that
+                tap spent their last pass. The window counts from the tap that actually spent a
+                pass. Doesn't apply to monthly members, who don't use passes. Set to 0 to turn this
+                off.
               </p>
               <div class="expiring-row">
                 <span data-i18n="settings.cooldown.noChargeWithin">No extra pass charged within</span>
@@ -545,14 +547,11 @@
       </section>
     </div>
 
-    <!-- Electron's renderer supports window.confirm() and window.alert() (used throughout this app)
-         but deliberately does NOT support window.prompt() -- calling it just throws "prompt() is not
-         supported", confirmed against a real build where this broke the +1 month/+10 passes renewal
-         buttons entirely. This is the replacement: a plain in-page modal standing in for it wherever
-         free-text input was needed (amount paid, current PIN to regenerate a recovery code). -->
-    <div id="text-prompt-modal" class="text-prompt-modal" hidden>
+    <!-- Shared in-page dialog for confirmations, messages, and text prompts. showModal() provides
+         native HTML focus containment without opening a separate Windows message box. -->
+    <dialog id="text-prompt-modal" class="text-prompt-modal" aria-labelledby="text-prompt-message" hidden>
       <div class="text-prompt-backdrop"></div>
-      <form id="text-prompt-form" class="text-prompt-panel" role="dialog" aria-modal="true" aria-labelledby="text-prompt-message">
+      <form id="text-prompt-form" class="text-prompt-panel">
         <p id="text-prompt-message"></p>
         <!-- type and maxlength are both set dynamically by showTextPrompt() per use: type=password +
              maxlength=8 for the "current PIN" prompt is what lets the scan-vs-human-typing buffer
@@ -560,13 +559,14 @@
              tell a real card scan apart from someone typing their PIN in here too -- a static
              maxlength here would also wrongly cap the plain-text amount-paid prompt, which needs to
              accept more than 8 characters for a larger amount. -->
-        <input id="text-prompt-input" autocomplete="off" />
+        <input id="text-prompt-input" autocomplete="off" aria-labelledby="text-prompt-message" aria-describedby="text-prompt-error" />
+        <p id="text-prompt-error" class="form-status is-error" role="alert"></p>
         <div class="text-prompt-actions">
           <button type="button" id="text-prompt-cancel" class="text-button" data-i18n="common.cancel">Cancel</button>
           <button type="submit" class="primary-button" data-i18n="common.ok">OK</button>
         </div>
       </form>
-    </div>
+    </dialog>
 
     <script src="../shared/dates.js"></script>
     <script src="../shared/renewal.js"></script>

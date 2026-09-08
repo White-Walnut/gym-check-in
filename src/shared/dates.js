@@ -27,8 +27,25 @@ function inclusiveDays(startDateString, endDateString) {
   return Math.max(0, Math.round((end - start) / 86_400_000) + 1);
 }
 
+// Shape *and* calendar validity. The shape test alone is not enough at the database/IPC boundary:
+// JavaScript's own date parsing silently normalises impossible dates (2026-02-30 becomes March 2),
+// so a plain Date.parse() check accepted a day that does not exist and stored it as a membership end
+// date. A browser <input type="date"> blocks that through the ordinary form, but the boundary is
+// reachable without it. Validating the components and then round-tripping them through a real Date
+// is what rejects a normalised day: a Date built from 2026-02-30 reports day 2 of March, which no
+// longer matches what was asked for. setFullYear is used rather than the `new Date(year, ...)`
+// constructor because that constructor maps years 0-99 onto 1900-1999, which would wrongly fail the
+// round-trip for a four-digit year like 0050.
 function isIsoDate(value) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T12:00:00`));
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value ?? ''));
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return false;
+  const probe = new Date(2000, 0, 1, 12);
+  probe.setFullYear(year, month - 1, day);
+  return probe.getFullYear() === year && probe.getMonth() === month - 1 && probe.getDate() === day;
 }
 
 /**

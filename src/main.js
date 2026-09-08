@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { GymDatabase, normaliseUid } = require('./database');
+const { copyBackupFiles } = require('./backup');
 const { localDateString } = require('./shared/dates');
 const { resolvePhotoPath, isContainedIn, isAllowedImageExtension } = require('./shared/photo-paths');
 const { checkinNotificationCopy } = require('./shared/checkin-notification');
@@ -17,6 +18,7 @@ const {
   quitAndInstallUpdate
 } = require('./updater');
 const logger = require('./logger');
+const { withDialogFocus } = require('./native-dialog');
 
 // --- Windows ---------------------------------------------------------------------------------
 // Normally there's just one window doing double duty (kiosk display + admin-as-a-modal), same as
@@ -32,6 +34,14 @@ let photosDir;
 let brandingDir;
 const smokeArgument = process.argv.find((argument) => argument.startsWith('--smoke-dir='));
 const smokeDirectory = smokeArgument ? smokeArgument.slice('--smoke-dir='.length) : null;
+const manualSmoke = Boolean(smokeDirectory && process.argv.includes('--manual-smoke'));
+if (smokeDirectory) {
+  // Isolate Chromium's caches and OS-crypt state too, before Electron creates any sessions.
+  const profile = path.join(smokeDirectory, 'electron-profile');
+  fs.mkdirSync(profile, { recursive: true });
+  app.setPath('userData', profile);
+  app.setPath('sessionData', profile);
+}
 // Normal smoke mode always forces single-window (deterministic, no real display dependency). This
 // flag opts a smoke run into the real dual-screen path instead, when actual hardware supports it --
 // see createWindows() and runSmokeCapture() below. Verification-only; never set in production.
@@ -61,16 +71,10 @@ function staffFacingWindow() {
   return staffWindow || kioskWindow;
 }
 
-// Windows-specific Electron quirk: after a native dialog.showOpenDialog/showSaveDialog closes, the
-// BrowserWindow that owned it can come back with its mouse/keyboard hit-testing desynced -- clicks
-// and typing land on nothing, everything LOOKS normal, and it stays that way until the window
-// genuinely regains OS focus (minimizing and restoring it is the workaround staff found by hand).
-// Explicitly re-focusing the window the instant the dialog resolves forces Chromium to resync input
-// routing itself, so staff never has to. Called after every dialog in this file, whether or not the
-// user picked a file -- the desync isn't tied to what they chose, just to the dialog having opened.
-function refocusAfterNativeDialog() {
-  const win = staffFacingWindow();
-  if (win && !win.isDestroyed()) win.focus();
+// Only file pickers remain native. Restore the exact owner's window and web-content focus in
+// finally, so cancellation and rejection receive the same recovery as a successful file choice.
+function showNativeDialog(method, options) {
+  return withDialogFocus(staffFacingWindow(), (owner) => dialog[method](owner, options));
 }
 
 const ASSETS_DIR = path.join(__dirname, '..', 'assets');
@@ -239,35 +243,48 @@ function windowOptions(extra = {}) {
   };
 }
 
-// Asks once, natively (dialog.showMessageBox -- this intercepts a window closing at the OS level,
-// before any confirmation from inside a page could apply, and has to work the same way regardless
-// of which window or mode triggered it), then actually quits if confirmed. Checks the form-bearing
-// window (staffWindow in two-screen mode, or the single kioskWindow otherwise -- a kiosk-role window
-// in two-screen mode never shows the admin panel at all, so it can never itself be the one with
-// unsaved changes) for unsaved changes via the same window.__gymHasUnsavedChanges() the renderer
-// already exposes for its own tab-switch/Lock warnings, so the one message covers both risks
-// instead of showing two popups back to back.
+// Ask on the staff page even when the customer-facing window's X triggered the request. Using the
+// same HTML dialog avoids the Windows focus problem on Cancel. Repeated X clicks cannot stack it.
+let quitPromptPending = false;
 async function confirmAndQuit(triggeringWindow) {
+  if (quitPromptPending) return;
+  quitPromptPending = true;
   const formWindow = staffFacingWindow();
-  let hasUnsavedChanges = false;
-  if (formWindow && !formWindow.isDestroyed()) {
-    hasUnsavedChanges = await formWindow.webContents
-      .executeJavaScript('window.__gymHasUnsavedChanges ? window.__gymHasUnsavedChanges() : false')
-      .catch(() => false);
-  }
-  const { response } = await dialog.showMessageBox(triggeringWindow, {
-    type: 'question',
-    buttons: [
-      t(currentLanguage, 'main.confirm.quitCancel'),
-      t(currentLanguage, 'main.confirm.quitConfirm')
-    ],
-    defaultId: 0,
-    cancelId: 0,
-    message: t(currentLanguage, hasUnsavedChanges ? 'main.confirm.quitWithUnsavedChanges' : 'main.confirm.quit')
-  });
-  if (response === 1) {
-    quittingConfirmed = true;
-    app.quit();
+  try {
+    let confirmed;
+    try {
+      if (!formWindow || formWindow.isDestroyed()) throw new Error('Staff window unavailable');
+      const copy = {
+        clean: t(currentLanguage, 'main.confirm.quit'),
+        dirty: t(currentLanguage, 'main.confirm.quitWithUnsavedChanges'),
+        confirmLabel: t(currentLanguage, 'main.confirm.quitConfirm'),
+        cancelLabel: t(currentLanguage, 'main.confirm.quitCancel')
+      };
+      formWindow.focus();
+      confirmed = await formWindow.webContents.executeJavaScript(`(() => {
+        const copy = ${JSON.stringify(copy)};
+        return showConfirmation(window.__gymHasUnsavedChanges() ? copy.dirty : copy.clean, copy);
+      })()`);
+    } catch (error) {
+      // A crashed or not-yet-loaded renderer must still be closable. Use a native fallback only
+      // here, conservatively warning about unsaved work and restoring focus on cancellation.
+      logger.logError('window', 'In-page quit confirmation unavailable', error);
+      const owner = formWindow && !formWindow.isDestroyed() ? formWindow : triggeringWindow;
+      const result = await withDialogFocus(owner, (win) => dialog.showMessageBox(win, {
+        type: 'question',
+        buttons: [t(currentLanguage, 'main.confirm.quitCancel'), t(currentLanguage, 'main.confirm.quitConfirm')],
+        defaultId: 0,
+        cancelId: 0,
+        message: t(currentLanguage, 'main.confirm.quitWithUnsavedChanges')
+      }));
+      confirmed = result.response === 1;
+    }
+    if (confirmed === true) {
+      quittingConfirmed = true;
+      app.quit();
+    }
+  } finally {
+    quitPromptPending = false;
   }
 }
 
@@ -311,7 +328,7 @@ function attachCommonWindowBehaviors(win, { isKioskDisplay }) {
   // .destroy() specifically to bypass all of this and never fires 'close' in the first place; this
   // is defense in depth, not the mechanism that protects it).
   win.on('close', (event) => {
-    if (smokeDirectory || quittingConfirmed) return;
+    if ((smokeDirectory && !manualSmoke) || quittingConfirmed) return;
     if (isKioskDisplay && kioskLockdownEnabled) return;
     event.preventDefault();
     confirmAndQuit(win);
@@ -339,7 +356,7 @@ async function createWindows() {
     // of the Settings toggle (see kioskWindowIsCustomerFacing).
     kioskWindowIsCustomerFacing = false;
     kioskWindow = new BrowserWindow(windowOptions({
-      show: !smokeDirectory,
+      show: !smokeDirectory || manualSmoke,
       title: 'Gym Check-in'
     }));
     staffWindow = null;
@@ -365,7 +382,7 @@ async function createWindows() {
       y: secondaryDisplay.bounds.y,
       width: secondaryDisplay.bounds.width,
       height: secondaryDisplay.bounds.height,
-      show: !smokeDirectory,
+      show: !smokeDirectory || manualSmoke,
       fullscreen: !smokeDirectory && !kioskLockdownEnabled,
       kiosk: !smokeDirectory && kioskLockdownEnabled,
       // Staff needs to freely switch to other apps (e.g. a separate MultiSport terminal app) on
@@ -381,7 +398,7 @@ async function createWindows() {
       y: primaryDisplay.bounds.y,
       width: primaryDisplay.bounds.width,
       height: primaryDisplay.bounds.height,
-      show: !smokeDirectory,
+      show: !smokeDirectory || manualSmoke,
       title: 'Gym Check-in — Staff'
     }));
     attachCommonWindowBehaviors(kioskWindow, { isKioskDisplay: true });
@@ -390,6 +407,13 @@ async function createWindows() {
   }
 
   if (smokeDirectory) {
+    if (manualSmoke) {
+      // A visible, disposable review session for real Windows picker/keyboard checks. This branch
+      // requires --smoke-dir, so it can never set a PIN or seed members in the live database.
+      gymDatabase.setStaffPin('1234');
+      unlockStaff();
+      return;
+    }
     if (staffWindow) await runDualScreenSmokeCapture();
     else await runSmokeCapture();
   }
@@ -460,8 +484,24 @@ async function captureWindowScreenshot(win, fileName) {
 
 async function runSmokeCapture() {
   const mainWindow = kioskWindow; // single-window smoke path -- this window is the staff dashboard
+  const { createSmokeDriver, runDialogSmoke } = require('./dialog-smoke');
+  const dialogDriver = createSmokeDriver(mainWindow);
   fs.mkdirSync(smokeDirectory, { recursive: true });
   await new Promise((resolve) => setTimeout(resolve, 250));
+  if (process.argv.includes('--dialog-smoke')) {
+    try {
+      const passed = await runDialogSmoke(mainWindow, smokeDirectory, { requestQuit: () => confirmAndQuit(mainWindow) });
+      console.log(`Dialog regressions passed: ${passed.length}`);
+      mainWindow.destroy();
+      app.quit();
+    } catch (error) {
+      fs.writeFileSync(path.join(smokeDirectory, 'dialog-failure.txt'), error.stack || String(error));
+      console.error(error);
+      mainWindow.destroy();
+      app.exit(1);
+    }
+    return;
+  }
   // The dashboard opens (and, via appInfo.smoke, auto-unlocks) on its own at launch now -- there's no
   // separate check-in stage to show first. This is already the "Add new member" tab, unlocked.
   await captureScreenshot('01-ready.png');
@@ -557,20 +597,14 @@ async function runSmokeCapture() {
   await mainWindow.webContents.executeJavaScript("openAdmin('renew'); memberSearch.value = ''; runMemberSearch()");
   await new Promise((resolve) => setTimeout(resolve, 1200));
   await captureScreenshot('07-admin-renew.png');
-  // The renewal quick-actions (+1 month / +10 passes) ask for an optional amount paid via
-  // window.prompt() -- Electron's renderer doesn't support window.prompt() at all, confirmed against
-  // a real build where clicking either button threw "prompt() is not supported" and silently did
-  // nothing (window.confirm(), used all over this file successfully, works fine; prompt() specifically
-  // does not). A real click on the real button (not calling renewMember() directly), so this exercises
-  // the whole path including the text-prompt modal that replaced window.prompt() -- see
-  // showTextPrompt() in renderer.js.
+  // Exercise the real in-page amount prompt and renewal IPC.
   await mainWindow.webContents.executeJavaScript(
     "[...document.querySelectorAll('.member-row')].find((row) => row.textContent.includes('Alex Morgan')).querySelector('.renew-actions button').click();"
   );
   await new Promise((resolve) => setTimeout(resolve, 400));
   const promptShown = await mainWindow.webContents.executeJavaScript('!textPromptModal.hidden');
   if (!promptShown) {
-    throw new Error('The amount-paid prompt did not appear after clicking +1 month -- window.prompt() may be silently failing again');
+    throw new Error('The in-page amount prompt did not appear after clicking +1 month');
   }
   await captureScreenshot('07f-amount-paid-prompt.png');
   await mainWindow.webContents.executeJavaScript("textPromptInput.value = '450'; textPromptForm.requestSubmit();");
@@ -647,14 +681,15 @@ async function runSmokeCapture() {
   // Member deletion, then a fresh Add-member capture right after: reported from the field that the
   // name/last-name/valid-until fields went inaccessible after deleting a member and then scanning a
   // card to add a new one. Uses Casey Demo (10000004, otherwise unreferenced anywhere else in this
-  // script) so deleting it can't affect any other assertion. window.confirm is mocked true here --
-  // this is well before the dedicated mock-confirm test further down, and every later consumer of
-  // window.confirm sets its own value before relying on it, so this doesn't affect anything after it.
+  // script) so deleting it can't affect any other assertion. Dismiss the actual HTML confirmation
+  // with a Chromium mouse event; no browser-popup mocks can hide a focus regression here.
   await mainWindow.webContents.executeJavaScript("closeMemberEditor(); setAdminTab('renew')");
   await new Promise((resolve) => setTimeout(resolve, 300));
   await mainWindow.webContents.executeJavaScript("openMemberEditor(visibleMembers.find(member => member.cardUid === '10000004'), true)");
   await new Promise((resolve) => setTimeout(resolve, 300));
-  await mainWindow.webContents.executeJavaScript("window.confirm = () => true; deleteMemberButton.click();");
+  await mainWindow.webContents.executeJavaScript("deleteMemberButton.click();");
+  await dialogDriver.waitFor('textPromptModal.open');
+  await dialogDriver.click('#text-prompt-form [type="submit"]');
   await new Promise((resolve) => setTimeout(resolve, 500));
   const deleteResult = await mainWindow.webContents.executeJavaScript(
     "({ editorHidden: editMemberForm.hidden, statusText: renewStatus.textContent, stillInResults: visibleMembers.some((member) => member.cardUid === '10000004') })"
@@ -757,12 +792,8 @@ async function runSmokeCapture() {
   if (!revertedState.topbarLogoHidden || revertedState.topbarName !== 'GYM CHECK-IN' || !revertedState.adminBrandHidden) {
     throw new Error(`Removing gym branding did not revert to the default look as expected: ${JSON.stringify(revertedState)}`);
   }
-  // Regenerating the recovery code also asks for the current PIN via window.prompt() -- same bug,
-  // same fix, verified the same way: a real click on the real button, confirming the text-prompt
-  // modal (password-typed this time) appears and completes the flow instead of throwing. Success
-  // shows the new code via window.alert(), which -- like window.confirm() elsewhere in this script --
-  // is a real blocking native dialog nothing here would ever dismiss, so it's mocked to a no-op first.
-  await mainWindow.webContents.executeJavaScript("window.alert = () => {}; regenerateRecoveryButton.click();");
+  // Exercise both the PIN prompt and the actual recovery-code message, without mocking a popup.
+  await mainWindow.webContents.executeJavaScript("regenerateRecoveryButton.click();");
   await new Promise((resolve) => setTimeout(resolve, 400));
   const recoveryPromptShown = await mainWindow.webContents.executeJavaScript(
     "({ shown: !textPromptModal.hidden, inputType: textPromptInput.type })"
@@ -772,6 +803,8 @@ async function runSmokeCapture() {
   }
   await mainWindow.webContents.executeJavaScript("textPromptInput.value = '1234'; textPromptForm.requestSubmit();");
   await new Promise((resolve) => setTimeout(resolve, 500));
+  await dialogDriver.waitFor('textPromptModal.open && activePromptKind === "alert"');
+  await dialogDriver.click('#text-prompt-form [type="submit"]');
   const recoveryRegenResult = await mainWindow.webContents.executeJavaScript(
     '({ promptHidden: textPromptModal.hidden, buttonReenabled: !regenerateRecoveryButton.disabled })'
   );
@@ -1010,23 +1043,26 @@ async function runSmokeCapture() {
   // Unsaved-changes/risky-edit confirms (see confirmDiscardUnsavedChanges and
   // describeRiskyEditChanges in renderer.js): verifies a dirty Add-member form actually blocks a tab
   // switch when the user says Cancel, actually proceeds and discards when they say OK, and that the
-  // Edit form's risky-change message comes out combined and correctly worded. Never touches a REAL
-  // window.confirm() (which would hang this whole script waiting for a click nothing can provide) --
-  // window.confirm is swapped for a canned function for the duration of each check instead.
+  // Edit form's risky-change message comes out combined and correctly worded. Use actual HTML
+  // dialogs. Full click-and-type focus regressions run immediately after these state assertions.
   await mainWindow.webContents.executeJavaScript(`(async () => {
-    setAdminTab('add');
+    await setAdminTab('add');
     const first = document.querySelector('#first-name');
     first.value = 'Temp';
     first.dispatchEvent(new Event('input', { bubbles: true }));
     const dirtyAfterTyping = window.__gymHasUnsavedChanges();
 
-    window.confirm = () => false; // simulate clicking Cancel on the discard prompt
-    setAdminTab('renew');
+    const cancelledSwitch = setAdminTab('renew');
+    await new Promise(resolve => setTimeout(resolve, 0));
+    textPromptCancelButton.click();
+    await cancelledSwitch;
     const blockedTab = currentAdminTab;
     const stillDirtyAfterBlock = addMemberDirty;
 
-    window.confirm = () => true; // simulate clicking OK
-    setAdminTab('renew');
+    const confirmedSwitch = setAdminTab('renew');
+    await new Promise(resolve => setTimeout(resolve, 0));
+    textPromptForm.requestSubmit();
+    await confirmedSwitch;
     const allowedTab = currentAdminTab;
     const clearAfterAllow = addMemberDirty;
     const firstNameAfterDiscard = document.querySelector('#first-name').value;
@@ -1058,6 +1094,8 @@ async function runSmokeCapture() {
       }
     }
   });
+
+  await runDialogSmoke(mainWindow, smokeDirectory, { requestQuit: () => confirmAndQuit(mainWindow) });
 
   const errorLogPath = path.join(smokeDirectory, 'console-errors.log');
   if (rendererErrors.length) {
@@ -1102,7 +1140,9 @@ app.whenReady().then(async () => {
       'Gym Check-in could not start',
       'The member database could not be opened or upgraded, so the app cannot continue.\n\n'
       + `Details: ${error.message}\n\n`
-      + `If a schema upgrade was in progress, a backup copy may have been saved next to:\n${databasePath}\n`
+      + 'A schema upgrade is never started without a verified backup, so if that backup could not '
+      + 'be made (see the details above), your database has not been modified.\n\n'
+      + `Otherwise, if an upgrade was in progress, its backup was saved next to:\n${databasePath}\n`
       + '(look for a file named "gym-checkin.pre-migration-<timestamp>.sqlite").\n\n'
       + `A log of this error was saved to:\n${logger.getLogFilePath()}\n\n`
       + 'Please back up the database file, send that log file, and contact support before trying again.'
@@ -1174,12 +1214,11 @@ app.whenReady().then(async () => {
       ],
       rows.map((row) => ({ ...row, outcome: t(currentLanguage, row.allowed ? 'common.approved' : 'common.denied') }))
     );
-    const target = await dialog.showSaveDialog(staffFacingWindow(), {
+    const target = await showNativeDialog('showSaveDialog', {
       title: t(currentLanguage, 'main.dialogs.exportHistoryTitle'),
       defaultPath: `gym-checkin-history-${localDateString()}.csv`,
       filters: [{ name: t(currentLanguage, 'main.dialogs.csvFilterName'), extensions: ['csv'] }]
     });
-    refocusAfterNativeDialog();
     if (target.canceled || !target.filePath) return { ok: false, error: 'cancelled' };
     try {
       fs.writeFileSync(target.filePath, csv);
@@ -1209,12 +1248,11 @@ app.whenReady().then(async () => {
       ],
       rows.map((row) => ({ ...row, amount: (row.amountCents / 100).toFixed(2) }))
     );
-    const target = await dialog.showSaveDialog(staffFacingWindow(), {
+    const target = await showNativeDialog('showSaveDialog', {
       title: t(currentLanguage, 'main.dialogs.exportPaymentsTitle'),
       defaultPath: `gym-checkin-payments-${localDateString()}.csv`,
       filters: [{ name: t(currentLanguage, 'main.dialogs.csvFilterName'), extensions: ['csv'] }]
     });
-    refocusAfterNativeDialog();
     if (target.canceled || !target.filePath) return { ok: false, error: 'cancelled' };
     try {
       fs.writeFileSync(target.filePath, csv);
@@ -1315,12 +1353,11 @@ app.whenReady().then(async () => {
   // --- Member photos --------------------------------------------------------------------------
   ipcMain.handle('choose-member-photo', async () => {
     if (!staffUnlocked) return { ok: false, error: 'not_authorized' };
-    const result = await dialog.showOpenDialog(staffFacingWindow(), {
+    const result = await showNativeDialog('showOpenDialog', {
       title: t(currentLanguage, 'main.dialogs.choosePhotoTitle'),
       properties: ['openFile'],
       filters: [{ name: t(currentLanguage, 'main.dialogs.imagesFilterName'), extensions: ['jpg', 'jpeg', 'png', 'webp'] }]
     });
-    refocusAfterNativeDialog();
     if (result.canceled || !result.filePaths.length) return { ok: false, error: 'cancelled' };
     return { ok: true, data: { path: result.filePaths[0] } };
   });
@@ -1393,12 +1430,11 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('choose-gym-logo', async () => {
     if (!staffUnlocked) return { ok: false, error: 'not_authorized' };
-    const result = await dialog.showOpenDialog(staffFacingWindow(), {
+    const result = await showNativeDialog('showOpenDialog', {
       title: t(currentLanguage, 'main.dialogs.chooseLogoTitle'),
       properties: ['openFile'],
       filters: [{ name: t(currentLanguage, 'main.dialogs.imagesFilterName'), extensions: ['jpg', 'jpeg', 'png', 'webp'] }]
     });
-    refocusAfterNativeDialog();
     if (result.canceled || !result.filePaths.length) return { ok: false, error: 'cancelled' };
     return { ok: true, data: { path: result.filePaths[0] } };
   });
@@ -1474,12 +1510,11 @@ app.whenReady().then(async () => {
       logger.logError('export', 'Member data export failed', error);
       return { ok: false, error: publicErrors.has(error.message) ? error.message : 'operation_failed' };
     }
-    const target = await dialog.showSaveDialog(staffFacingWindow(), {
+    const target = await showNativeDialog('showSaveDialog', {
       title: t(currentLanguage, 'main.dialogs.exportMemberDataTitle'),
       defaultPath: `${data.member.name.replace(/[^a-z0-9]+/gi, '-')}-data-export.json`,
       filters: [{ name: t(currentLanguage, 'main.dialogs.jsonFilterName'), extensions: ['json'] }]
     });
-    refocusAfterNativeDialog();
     if (target.canceled || !target.filePath) return { ok: false, error: 'cancelled' };
     try {
       fs.writeFileSync(target.filePath, JSON.stringify(data, null, 2));
@@ -1493,16 +1528,28 @@ app.whenReady().then(async () => {
   ipcMain.handle('export-backup', async () => {
     if (!staffUnlocked) return { ok: false, error: 'not_authorized' };
     if (databasePath === ':memory:') return { ok: false, error: 'operation_failed' };
-    const target = await dialog.showSaveDialog(staffFacingWindow(), {
+    const target = await showNativeDialog('showSaveDialog', {
       title: t(currentLanguage, 'main.dialogs.exportBackupTitle'),
       defaultPath: `gym-checkin-backup-${localDateString()}.sqlite`,
       filters: [{ name: t(currentLanguage, 'main.dialogs.sqliteFilterName'), extensions: ['sqlite'] }]
     });
-    refocusAfterNativeDialog();
     if (target.canceled || !target.filePath) return { ok: false, error: 'cancelled' };
     try {
-      fs.copyFileSync(databasePath, target.filePath);
-      return { ok: true, data: { path: target.filePath } };
+      // gymDatabase.backupTo, never a file copy: this database runs in WAL mode, so a plain copy of
+      // the .sqlite file silently omits everything committed since the last checkpoint -- a backup
+      // that opens fine and is missing today's members. See the comment on backupTo.
+      gymDatabase.backupTo(target.filePath);
+      // Member photos and the gym logo are files on disk, not database rows, so the snapshot alone
+      // is not a complete backup -- copy them into a sibling folder so both halves travel together.
+      // A failure to copy them must not make a good database snapshot look failed, so it is reported
+      // through fileCount (which the UI states plainly) rather than by discarding the backup.
+      let files = { directory: null, fileCount: 0 };
+      try {
+        files = copyBackupFiles(target.filePath, { photos: photosDir, branding: brandingDir });
+      } catch (error) {
+        logger.logError('export', 'Backup saved, but copying member photos/branding failed', error);
+      }
+      return { ok: true, data: { path: target.filePath, fileCount: files.fileCount } };
     } catch (error) {
       logger.logError('export', 'Backup export failed', error);
       return { ok: false, error: 'operation_failed' };
@@ -1516,12 +1563,11 @@ app.whenReady().then(async () => {
     if (!staffUnlocked) return { ok: false, error: 'not_authorized' };
     const logPath = logger.getLogFilePath();
     if (!logPath || !fs.existsSync(logPath)) return { ok: false, error: 'no_log_yet' };
-    const target = await dialog.showSaveDialog(staffFacingWindow(), {
+    const target = await showNativeDialog('showSaveDialog', {
       title: t(currentLanguage, 'main.dialogs.exportLogTitle'),
       defaultPath: `gym-checkin-log-${localDateString()}.txt`,
       filters: [{ name: t(currentLanguage, 'main.dialogs.textFilterName'), extensions: ['txt', 'log'] }]
     });
-    refocusAfterNativeDialog();
     if (target.canceled || !target.filePath) return { ok: false, error: 'cancelled' };
     try {
       fs.copyFileSync(logPath, target.filePath);
@@ -1589,7 +1635,7 @@ app.whenReady().then(async () => {
     }
   });
   ipcMain.handle('quit-and-install-update', () => {
-    // Already confirmed its own way (the "Restart and install" button's own window.confirm in
+    // Already confirmed its own way (the "Restart and install" button's in-page confirmation in
     // renderer.js) -- skip the generic quit warning below so this isn't confirmed twice in a row.
     quittingConfirmed = true;
     quitAndInstallUpdate();
