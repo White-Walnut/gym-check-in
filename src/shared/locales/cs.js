@@ -68,7 +68,7 @@ const cs = {
     lockAriaLabel: 'Uzamknout a vrátit se na obrazovku PIN',
     lockTitle: 'Uzamknout',
     lockLabel: 'Uzamknout',
-    tabs: { add: 'Přidat nového člena', renew: 'Obnovit / prodloužit', history: 'Historie příchodů', payments: 'Platby', settings: 'Nastavení' }
+    tabs: { add: 'Přidat člena', renew: 'Členové', history: 'Příchody', payments: 'Platby', settings: 'Nastavení' }
   },
 
   staffLock: {
@@ -137,7 +137,6 @@ const cs = {
     show: 'Zobrazit',
     showAll: 'Zobrazit všechny členy',
     noExpiringMembers: 'V tomto období nikomu nevyprší členství.',
-    membersHeading: 'Členové',
     loadingMembers: 'Načítání členů…',
     memberCount: '{count} {unit}',
     noMatchingMembers: 'Žádní odpovídající členové.',
@@ -145,8 +144,24 @@ const cs = {
     plusOneMonth: '+1 měsíc',
     plusTenPasses: '+10 vstupů',
     customDateButton: 'Vlastní datum',
-    membershipDescriptionPunchcard: 'Vstupová · zbývá {count} {unit} · UID {uid}',
-    membershipDescriptionMonthly: 'Měsíční · platnost do {date} · UID {uid}',
+    status: {
+      active: 'Aktivní',
+      // "Ještě {count} {unit}" rather than a verb form: it stays grammatical across all three Czech
+      // plural forms (1 den / 3 dny / 5 dní), which "zbývá/zbývají" would not.
+      expiringSoon: 'Ještě {count} {unit}',
+      lastDay: 'Poslední den',
+      expired: 'Vypršelo {date}',
+      frozen: 'Zmrazeno',
+      cancelled: 'Zrušeno',
+      passes: '{count} {unit}',
+      passesLow: 'Ještě {count} {unit}',
+      noPasses: 'Bez vstupů',
+      unknown: 'Neznámé'
+    },
+    metaMonthlyUntil: 'Měsíční · do {date}',
+    metaMonthlyEnded: 'Měsíční · skončilo {date}',
+    metaMonthlyNoDate: 'Měsíční · bez data konce',
+    metaPunchcard: 'Vstupová',
     renewedMonthly: 'Měsíční přístup prodloužen do {date}.',
     renewedPunchcard: 'Vstupová nyní obsahuje {count} {unit}.',
     renewResult: '{name}: {change}',

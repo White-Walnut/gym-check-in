@@ -121,32 +121,43 @@ unlocking again returns to the same tab you left.
 
 To add a member:
 
-1. Open **Add new member** and tap an unassigned card. For a card that scanned as unrecognised, click
+1. Open **Add member** and tap an unassigned card. For a card that scanned as unrecognised, click
    its entry in **Recent check-ins** (see **Check-in notifications**) instead -- that jumps here with
    the UID already captured, the same way the old "Assign to new member" prompt used to.
 2. Enter the member's first and last name.
 3. Choose Monthly and set the end date, or choose Punch card and set the starting pass count.
 4. Click **Save member**.
 
-To renew access, open **Renew or prolong**. The member list appears immediately and can be filtered
-by name or card UID (or click **Scan to find** and tap a card). Click a member's name to open their
-editor directly -- the buttons alongside are still there for the one-click renewal shortcuts below.
+To renew access, open **Members**. The list appears immediately and can be filtered by name or card
+UID (or click **Scan to find** and tap a card). Click a member's name to open their editor.
 
-- **+1 month** adds one calendar membership period. If access is still active, the new period begins
-  the day after the current end date. If expired, it begins today.
-- **+10 passes** adds ten entries, or converts the member to a punch card with ten entries.
+Each row is built to be read in one glance, left to right: who they are, what state their membership
+is in, and what to do about it. The state is a short chip -- *Active*, *3 days left*, *Last day*,
+*Expired 1.1.2020*, *9 passes*, *No passes*, *Frozen* -- and only the ones that need someone to act
+are coloured, so a list of thirty members stays quiet apart from the rows that don't. Underneath sits
+the reference detail: the plan, its date, and the card UID.
+
+Every row offers exactly one renewal action, the one matching the plan that member is already on:
+
+- **+1 month** (monthly members) adds one calendar membership period. If access is still active, the
+  new period begins the day after the current end date. If expired, it begins today.
+- **+10 passes** (punch-card members) adds ten entries.
 - **Custom date** (monthly members only) opens the member editor focused on the end-date field for a
-  one-off date -- it no longer changes the member's status or plan type as a side effect.
+  one-off date -- it doesn't change the member's status or plan type as a side effect.
 - **Edit** changes the member's name, card UID, status, membership type, exact end date, or remaining
   entry count.
 
-Renewing always reactivates a frozen/cancelled member, and converting plan type discards the member's
-existing balance in the other type (remaining punch-card passes, or remaining monthly days). Both
-**+1 month** and **+10 passes** ask for confirmation first when either of those would happen, then
-prompt for an optional amount paid (skip by leaving it blank) before saving.
+Renewing always reactivates a frozen/cancelled member. Quick renewals prompt for an optional amount
+paid (skip by leaving it blank) before saving.
 
-**Renew or prolong** also has an **Expiring within [N] days** control next to the search box, so
-reception can proactively see who's about to lapse instead of only reacting once a card is declined.
+**Changing someone's plan type is done in Edit, not from the list.** The list used to offer both
+renewals on every row, which meant the wrong click converted a member's plan and forfeited whatever
+balance they had in the other one -- ten unused passes, or three remaining weeks. Changing the
+**Membership** dropdown in Edit does the same conversion deliberately, and asks first, stating
+exactly what would be lost.
+
+**Members** also has an **Expiring within [N] days** control next to the search box, so reception can
+proactively see who's about to lapse instead of only reacting once a card is declined.
 
 Open **Edit** on any member for the full set of changes:
 
@@ -238,13 +249,13 @@ on a second monitor -- this is the normal setup for a single staff PC with a pla
 A **Recent check-ins** panel also sits in the dashboard's header, visible no matter which tab is
 open -- like a chat panel next to a stream -- showing the last 5 check-ins with name and outcome.
 Click an entry to act on it immediately: an unrecognised card jumps to **Add new member** with the UID
-already captured; anything else jumps to **Renew or prolong**, searched straight to that member. It
+already captured; anything else jumps to **Members**, searched straight to that member. It
 never appears on a kiosk-role window in two-screen mode, since that window can't open the dashboard at
 all.
 
 ## Check-in history
 
-The **Check-in history** tab lists every check-in -- approved, denied, and unknown-card alike, since a
+The **Check-ins** tab lists every check-in -- approved, denied, and unknown-card alike, since a
 run of denials or repeated unknown-card taps is itself worth noticing, not just noise to hide. Filter
 by member name/card UID and/or a date range; **Load more** paginates further back. **Export CSV…**
 saves the currently-filtered list (up to 5,000 rows at a time) to a file, e.g. for handing attendance

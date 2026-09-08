@@ -158,9 +158,9 @@
           <div class="admin-body">
           <div class="admin-main">
           <nav class="admin-tabs" aria-label="Member management sections">
-            <button class="admin-tab is-active" type="button" data-admin-tab="add" data-i18n="admin.tabs.add">Add new member</button>
-            <button class="admin-tab" type="button" data-admin-tab="renew" data-i18n="admin.tabs.renew">Renew or prolong</button>
-            <button class="admin-tab" type="button" data-admin-tab="history" data-i18n="admin.tabs.history">Check-in history</button>
+            <button class="admin-tab is-active" type="button" data-admin-tab="add" data-i18n="admin.tabs.add">Add member</button>
+            <button class="admin-tab" type="button" data-admin-tab="renew" data-i18n="admin.tabs.renew">Members</button>
+            <button class="admin-tab" type="button" data-admin-tab="history" data-i18n="admin.tabs.history">Check-ins</button>
             <button class="admin-tab" type="button" data-admin-tab="payments" data-i18n="admin.tabs.payments">Payments</button>
             <button class="admin-tab" type="button" data-admin-tab="settings" data-i18n="admin.tabs.settings">Settings</button>
           </nav>
@@ -272,7 +272,7 @@
               </div>
             </form>
 
-            <div class="member-list-heading"><strong data-i18n="renew.membersHeading">Members</strong><span id="member-count"></span></div>
+            <div class="member-list-heading"><span id="member-count"></span></div>
             <div id="search-results" class="search-results">
               <div class="empty-search" data-i18n="renew.loadingMembers">Loading members…</div>
             </div>
@@ -570,6 +570,7 @@
 
     <script src="../shared/dates.js"></script>
     <script src="../shared/renewal.js"></script>
+    <script src="../shared/member-status.js"></script>
     <script src="scan-router.js"></script>
     <script src="renderer.js"></script>
   </body>

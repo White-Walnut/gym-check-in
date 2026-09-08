@@ -745,16 +745,29 @@ async function setAdminTab(tabName) {
   return true;
 }
 
-function membershipDescription(member) {
-  if (member.membershipType === 'punchcard') {
-    return window.i18n.t(currentLang, 'renew.membershipDescriptionPunchcard', {
-      count: member.passesRemaining,
-      unit: window.i18n.plural(currentLang, 'common.passUnit', member.passesRemaining),
-      uid: member.cardUid
-    });
+// The status chip: one short phrase per member, translated from what memberStatus() decided (see
+// src/shared/member-status.js). Colour is carried by the tone class, not by this text.
+function memberStatusLabel(member) {
+  const status = memberStatus(member, localDateString());
+  const params = { ...status.params };
+  if (params.date) params.date = formatDate(new Date(`${params.date}T12:00:00`));
+  if (typeof params.count === 'number') {
+    params.unit = status.key === 'expiringSoon'
+      ? window.i18n.plural(currentLang, 'common.dayUnit', params.count)
+      : window.i18n.plural(currentLang, 'common.passUnit', params.count);
   }
+  return { text: window.i18n.t(currentLang, `renew.status.${status.key}`, params), tone: status.tone };
+}
+
+// The quiet second line: which plan, and the card UID. Everything time-critical has moved up into
+// the status chip, so this is reference detail -- present when someone looks for it, not competing
+// for attention with the member's name.
+function membershipMeta(member) {
+  if (member.membershipType === 'punchcard') return window.i18n.t(currentLang, 'renew.metaPunchcard');
+  if (!member.validUntil) return window.i18n.t(currentLang, 'renew.metaMonthlyNoDate');
   const date = formatDate(new Date(`${member.validUntil}T12:00:00`));
-  return window.i18n.t(currentLang, 'renew.membershipDescriptionMonthly', { date, uid: member.cardUid });
+  const key = member.validUntil < localDateString() ? 'renew.metaMonthlyEnded' : 'renew.metaMonthlyUntil';
+  return window.i18n.t(currentLang, key, { date });
 }
 
 function renderSearchResults(members) {
@@ -789,32 +802,56 @@ function renderSearchResults(members) {
       }
     });
     const name = document.createElement('strong');
-    const description = document.createElement('small');
+    const meta = document.createElement('small');
+    const plan = document.createElement('span');
+    const uid = document.createElement('span');
     name.textContent = member.name;
-    description.textContent = membershipDescription(member);
-    details.append(name, description);
+    plan.textContent = membershipMeta(member);
+    uid.className = 'member-uid';
+    uid.textContent = member.cardUid;
+    meta.append(plan, uid);
+    details.append(name, meta);
 
+    const status = memberStatusLabel(member);
+    const statusChip = document.createElement('span');
+    statusChip.className = `member-status is-${status.tone}`;
+    statusChip.textContent = status.text;
+
+    // One renewal action per row, and it is always the one that matches the plan this member is
+    // already on: +1 month for monthly, +10 passes for a punch card. The row used to offer both at
+    // equal weight, so half of every row was an action nobody wanted -- and the wrong half silently
+    // converted the member's plan and forfeited whatever balance they had. Changing someone's plan
+    // is now a deliberate trip through Edit, which asks before discarding anything.
     const actions = document.createElement('div');
     actions.className = 'renew-actions';
-    const monthlyButton = makeRenewButton(window.i18n.t(currentLang, 'renew.plusOneMonth'), member.id, 'monthly');
-    const punchButton = makeRenewButton(window.i18n.t(currentLang, 'renew.plusTenPasses'), member.id, 'punchcard');
-    const editButton = makeActionButton(window.i18n.t(currentLang, 'common.edit'), () => openMemberEditor(member, false));
-    actions.append(monthlyButton, punchButton);
-    // "Custom date" only makes sense for a member already on a monthly plan -- forcing a punch-card
-    // or frozen/cancelled member through this shortcut used to silently convert/reactivate them.
+    const renewalType = member.membershipType === 'punchcard' ? 'punchcard' : 'monthly';
+    const primaryLabel = renewalType === 'punchcard' ? 'renew.plusTenPasses' : 'renew.plusOneMonth';
+    const primaryButton = makeRenewButton(window.i18n.t(currentLang, primaryLabel), member.id, renewalType);
+    primaryButton.classList.add('is-primary');
+    primaryButton.dataset.action = 'renew-primary';
+    actions.append(primaryButton);
+    // A one-off end date is a monthly-only idea, and it opens the editor rather than renewing, so it
+    // sits with Edit as a secondary text action instead of looking like another renewal button.
     if (member.membershipType === 'monthly') {
-      actions.append(makeActionButton(window.i18n.t(currentLang, 'renew.customDateButton'), () => openMemberEditor(member, true)));
+      const customDate = makeTextAction(window.i18n.t(currentLang, 'renew.customDateButton'), () => openMemberEditor(member, true));
+      customDate.dataset.action = 'custom-date';
+      actions.append(customDate);
     }
+    const editButton = makeTextAction(window.i18n.t(currentLang, 'common.edit'), () => openMemberEditor(member, false));
+    editButton.dataset.action = 'edit-member';
     actions.append(editButton);
-    row.append(details, actions);
+
+    row.append(details, statusChip, actions);
     searchResults.append(row);
   }
 }
 
-function makeActionButton(label, action) {
+// A secondary row action: same click target size, deliberately without the filled-button look, so
+// each row reads as one primary action plus a couple of quieter options rather than a button bar.
+function makeTextAction(label, action) {
   const button = document.createElement('button');
   button.type = 'button';
-  button.className = 'renew-button';
+  button.className = 'row-text-action';
   button.textContent = label;
   button.addEventListener('click', action);
   return button;
@@ -1053,7 +1090,7 @@ let activityFeedEntries = [];
 // Clicking an entry jumps straight to acting on it: an unknown card goes to Add new member with the
 // UID already captured (the old check-in stage's "Assign to new member" button doesn't exist any
 // more now that the stage isn't shown on this window -- this is its replacement); anything else jumps
-// to Renew or prolong, searched straight to that card.
+// to the Members tab, searched straight to that card.
 async function jumpToActivityFeedEntry(entry) {
   if (!entry.uid) return;
   if (entry.reason === 'unknown_card') {
@@ -1817,6 +1854,15 @@ addMemberForm.addEventListener('submit', async (event) => {
 editMemberForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   if (editingOriginalMember) {
+    // Changing the plan type here forfeits whatever balance the member had in the other one, and
+    // Edit is now the only way to make that change (the member list no longer offers a cross-plan
+    // quick button), so this is where it has to be asked. `reactivates` is forced off: the status
+    // dropdown is right there on this form, so staff picking "active" is a choice they just made,
+    // not a side effect worth warning about.
+    const discard = wouldDiscardBalance(editingOriginalMember, editMembershipType.value, localDateString());
+    if ((discard.discardsPasses || discard.discardsDays)
+      && !await showConfirmation(describeDiscard(editingOriginalMember, { ...discard, reactivates: false }))) return;
+
     const riskyChangeMessage = describeRiskyEditChanges(editingOriginalMember, {
       membershipStatus: document.querySelector('#edit-membership-status').value,
       cardUid: document.querySelector('#edit-card-uid').value

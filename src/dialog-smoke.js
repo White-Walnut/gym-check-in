@@ -133,8 +133,9 @@ async function runDialogSmoke(win, directory, { requestQuit, capture = true } = 
   }))()`);
   const before = await snapshot();
   assert.ok(before.members?.length, 'Fixture lookup must not silently fail');
-  const renewalButton = '.member-row .renew-actions button:nth-child(2)';
-  // The second quick action is same-type +10 passes for this punch-card fixture.
+  const renewalButton = '.member-row [data-action="renew-primary"]';
+  // Each row carries one renewal action, matching that member's own plan -- +10 passes for this
+  // punch-card fixture, so this is a same-type renewal that goes straight to the amount prompt.
   for (const dismissal of ['cancel', 'escape', 'backdrop']) {
     await click(renewalButton);
     await modalOpen();

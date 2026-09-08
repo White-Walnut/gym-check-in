@@ -75,7 +75,7 @@ const en = {
     lockAriaLabel: 'Lock and return to the PIN screen',
     lockTitle: 'Lock',
     lockLabel: 'Lock',
-    tabs: { add: 'Add new member', renew: 'Renew or prolong', history: 'Check-in history', payments: 'Payments', settings: 'Settings' }
+    tabs: { add: 'Add member', renew: 'Members', history: 'Check-ins', payments: 'Payments', settings: 'Settings' }
   },
 
   staffLock: {
@@ -144,7 +144,6 @@ const en = {
     show: 'Show',
     showAll: 'Show all members',
     noExpiringMembers: 'No members expiring in that window.',
-    membersHeading: 'Members',
     loadingMembers: 'Loading members…',
     memberCount: '{count} {unit}',
     noMatchingMembers: 'No matching members.',
@@ -152,8 +151,24 @@ const en = {
     plusOneMonth: '+1 month',
     plusTenPasses: '+10 passes',
     customDateButton: 'Custom date',
-    membershipDescriptionPunchcard: 'Punch card · {count} {unit} remaining · UID {uid}',
-    membershipDescriptionMonthly: 'Monthly · Valid until {date} · UID {uid}',
+    // The one-glance state of a membership, decided by src/shared/member-status.js. Kept short on
+    // purpose: these sit in a chip at the end of a row, next to the member's name.
+    status: {
+      active: 'Active',
+      expiringSoon: '{count} {unit} left',
+      lastDay: 'Last day',
+      expired: 'Expired {date}',
+      frozen: 'Frozen',
+      cancelled: 'Cancelled',
+      passes: '{count} {unit}',
+      passesLow: '{count} {unit} left',
+      noPasses: 'No passes',
+      unknown: 'Unknown'
+    },
+    metaMonthlyUntil: 'Monthly · to {date}',
+    metaMonthlyEnded: 'Monthly · ended {date}',
+    metaMonthlyNoDate: 'Monthly · no end date',
+    metaPunchcard: 'Punch card',
     renewedMonthly: 'Monthly access extended through {date}.',
     renewedPunchcard: 'Punch card now has {count} {unit}.',
     renewResult: '{name}: {change}',

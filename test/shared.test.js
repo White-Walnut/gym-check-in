@@ -10,6 +10,7 @@ const {
   normaliseRecoveryCode
 } = require('../src/shared/pin');
 const { wouldDiscardBalance } = require('../src/shared/renewal');
+const { memberStatus } = require('../src/shared/member-status');
 const { resolvePhotoPath, isContainedIn, isAllowedImageExtension } = require('../src/shared/photo-paths');
 const { membershipEndDate, isIsoDate } = require('../src/shared/dates');
 const { checkinNotificationCopy } = require('../src/shared/checkin-notification');
@@ -296,6 +297,64 @@ test('t() interpolates placeholders and falls back to English for a language mis
   assert.equal(t('cs', 'renew.jumpedToCard', { uid: 'ABC123' }), 'Přechod na kartu ABC123.');
   // A key that exists in neither language returns the raw key -- visibly wrong, not a blank string.
   assert.equal(t('en', 'nonexistent.key.here'), 'nonexistent.key.here');
+});
+
+// --- Member status chip (src/shared/member-status.js) ------------------------------------------
+
+const TODAY = '2026-09-08';
+const monthly = (validUntil, membershipStatus = 'active') => ({ membershipType: 'monthly', membershipStatus, validUntil, passesRemaining: 0 });
+const punchcard = (passesRemaining, membershipStatus = 'active') => ({ membershipType: 'punchcard', membershipStatus, validUntil: null, passesRemaining });
+
+test('memberStatus reduces a monthly membership to one state, loudly only when it needs action', () => {
+  // Comfortably valid: quiet. This is most of a member list and must not shout.
+  assert.deepEqual(memberStatus(monthly('2026-12-31'), TODAY), { key: 'active', tone: 'neutral', params: { date: '2026-12-31' } });
+
+  // Needs action while the member is standing at the desk.
+  assert.deepEqual(memberStatus(monthly('2026-09-08'), TODAY), { key: 'lastDay', tone: 'warn', params: { date: '2026-09-08' } });
+  assert.deepEqual(memberStatus(monthly('2026-09-11'), TODAY), { key: 'expiringSoon', tone: 'warn', params: { count: 3 } });
+  assert.deepEqual(memberStatus(monthly('2026-09-15'), TODAY), { key: 'expiringSoon', tone: 'warn', params: { count: 7 } });
+  // One day past the window is back to quiet -- the threshold is a real boundary, not a gradient.
+  assert.deepEqual(memberStatus(monthly('2026-09-16'), TODAY), { key: 'active', tone: 'neutral', params: { date: '2026-09-16' } });
+
+  // Already lapsed: the case that used to be indistinguishable from a valid membership.
+  assert.deepEqual(memberStatus(monthly('2026-09-07'), TODAY), { key: 'expired', tone: 'danger', params: { date: '2026-09-07' } });
+  assert.deepEqual(memberStatus(monthly('2020-01-01'), TODAY), { key: 'expired', tone: 'danger', params: { date: '2020-01-01' } });
+  assert.deepEqual(memberStatus(monthly(null), TODAY), { key: 'expired', tone: 'danger', params: { date: null } });
+});
+
+test('memberStatus reports punch-card balance, and flags a nearly-empty card', () => {
+  assert.deepEqual(memberStatus(punchcard(9), TODAY), { key: 'passes', tone: 'neutral', params: { count: 9 } });
+  assert.deepEqual(memberStatus(punchcard(3), TODAY), { key: 'passes', tone: 'neutral', params: { count: 3 } });
+  assert.deepEqual(memberStatus(punchcard(2), TODAY), { key: 'passesLow', tone: 'warn', params: { count: 2 } });
+  assert.deepEqual(memberStatus(punchcard(1), TODAY), { key: 'passesLow', tone: 'warn', params: { count: 1 } });
+  assert.deepEqual(memberStatus(punchcard(0), TODAY), { key: 'noPasses', tone: 'danger', params: { count: 0 } });
+});
+
+test('memberStatus puts frozen and cancelled above any balance, and stays muted about them', () => {
+  // Whatever the balance says, this card is refused at the reader -- so that is the fact shown. Not
+  // red, though: someone chose this deliberately, it is not a problem to fix.
+  for (const status of ['frozen', 'cancelled']) {
+    assert.deepEqual(memberStatus(monthly('2026-12-31', status), TODAY), { key: status, tone: 'muted', params: {} });
+    assert.deepEqual(memberStatus(monthly('2020-01-01', status), TODAY), { key: status, tone: 'muted', params: {} });
+    assert.deepEqual(memberStatus(punchcard(10, status), TODAY), { key: status, tone: 'muted', params: {} });
+    assert.deepEqual(memberStatus(punchcard(0, status), TODAY), { key: status, tone: 'muted', params: {} });
+  }
+});
+
+test('memberStatus takes a custom expiring window and never throws on a missing member', () => {
+  assert.equal(memberStatus(monthly('2026-10-01'), TODAY, 30).key, 'expiringSoon');
+  assert.equal(memberStatus(monthly('2026-10-01'), TODAY, 7).key, 'active');
+  assert.deepEqual(memberStatus(null, TODAY), { key: 'unknown', tone: 'muted', params: {} });
+});
+
+test('every member status key exists in both locales', () => {
+  // The chip renders `renew.status.<key>`, so a key the status module can return but a locale file
+  // does not have would surface as a raw key string at the desk.
+  const keys = ['active', 'expiringSoon', 'lastDay', 'expired', 'frozen', 'cancelled', 'passes', 'passesLow', 'noPasses', 'unknown'];
+  for (const key of keys) {
+    assert.equal(typeof en.renew.status[key], 'string', `en is missing renew.status.${key}`);
+    assert.equal(typeof cs.renew.status[key], 'string', `cs is missing renew.status.${key}`);
+  }
 });
 
 test('isIsoDate rejects a date that has the right shape but does not exist on the calendar', () => {

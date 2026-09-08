@@ -599,7 +599,9 @@ async function runSmokeCapture() {
   await captureScreenshot('07-admin-renew.png');
   // Exercise the real in-page amount prompt and renewal IPC.
   await mainWindow.webContents.executeJavaScript(
-    "[...document.querySelectorAll('.member-row')].find((row) => row.textContent.includes('Alex Morgan')).querySelector('.renew-actions button').click();"
+    // data-action rather than a positional selector: each row now carries exactly one renewal
+    // button, the one matching that member's own plan, so "the primary action" is what this means.
+    "[...document.querySelectorAll('.member-row')].find((row) => row.textContent.includes('Alex Morgan')).querySelector('[data-action=\"renew-primary\"]').click();"
   );
   await new Promise((resolve) => setTimeout(resolve, 400));
   const promptShown = await mainWindow.webContents.executeJavaScript('!textPromptModal.hidden');
