@@ -1,9 +1,15 @@
 // Czech strings.
 //
-// *** DRAFT -- UNREVIEWED. I am not a native or fluent Czech speaker. Every value below is a
-// first-pass translation for a native/fluent speaker to check before this ships (grammar, tone,
-// natural phrasing, and correctness of the plural forms all need a real review). Treat this file as
-// a starting point, not a finished translation. ***
+// Rewritten from scratch as natural Czech rather than translated line by line from en.js. Two rules
+// run through the whole file, because Czech grammar breaks where English doesn't:
+//
+//   - No gendered past participles about a member ("uložen(a)", "byl(a) odstraněn(a)"). Messages are
+//     phrased so the verb agrees with something fixed instead: "Uloženo: {name}", "Členství se znovu
+//     aktivuje".
+//   - No numbers glued to a verb or adjective that has to agree with them ("zbývá 3 vstupy",
+//     "5 nevyužitých vstupů"). Counts go after a colon or in brackets ("Zbývá vstupů: 3"), which is
+//     correct for every number. The only exceptions are the noun plurals in common.*Unit, which pick
+//     the right form themselves.
 //
 // Must cover the same keys as en.js -- see that file's own header comment for the plural-object and
 // "...Html" key conventions. Czech plural nouns use one/few/other (not "many" -- for a whole-number
@@ -11,38 +17,40 @@
 // here; "other" is what a whole 0 or 5+ count actually falls into).
 const cs = {
   confirm: {
-    discardAddMember: 'Začali jste přidávat nového člena, ale ještě jste to neuložili. Zahodit rozepsané údaje a pokračovat?',
-    discardEditMember: 'Máte neuložené změny u tohoto člena. Zahodit je a pokračovat?'
+    discardAddMember: 'Nový člen ještě není uložený. Zahodit ho?',
+    discardEditMember: 'Změny u člena nejsou uložené. Zahodit je?'
   },
   common: {
-    approved: 'Schváleno',
+    approved: 'Povoleno',
     denied: 'Zamítnuto',
-    loading: 'Načítání…',
+    loading: 'Načítám…',
     cancel: 'Zrušit',
     ok: 'OK',
+    moreInfo: 'Více informací',
     edit: 'Upravit',
     unknownCard: 'Neznámá karta',
     unrecognisedCard: 'Nerozpoznaná karta',
-    systemError: 'Systémová chyba',
+    systemError: 'Chyba systému',
     passUnit: { one: 'vstup', few: 'vstupy', other: 'vstupů' },
     dayUnit: { one: 'den', few: 'dny', other: 'dní' },
     memberUnit: { one: 'člen', few: 'členové', other: 'členů' },
-    status: { active: 'aktivní', frozen: 'pozastaveno', cancelled: 'zrušeno' }
+    // Neuter, agreeing with "členství" -- both places that use these say "Členství je/bude {status}".
+    status: { active: 'aktivní', frozen: 'pozastavené', cancelled: 'zrušené' }
   },
 
   topbar: {
-    brandSubtitle: 'Přístup členů',
+    brandSubtitle: 'Vstup pro členy',
     adminToggleAriaLabel: 'Otevřít správu členů',
     adminToggleTitle: 'Správa členů (Tab)',
     readerReady: 'Čtečka připravena'
   },
 
   idle: {
-    eyebrow: 'PŘIPRAVENO K PŘÍCHODU',
-    headingCard: 'Přiložte svou členskou kartu',
-    headingBarcode: 'Naskenujte svůj čárový kód členství',
-    subheadCard: 'Podržte kartu u čtečky. Schválení se zobrazí okamžitě.',
-    subheadBarcode: 'Namiřte skener na čárový kód. Schválení se zobrazí okamžitě.'
+    eyebrow: 'PŘIPRAVENO',
+    headingCard: 'Přiložte členskou kartu',
+    headingBarcode: 'Naskenujte čárový kód',
+    subheadCard: 'Podržte ji u čtečky.',
+    subheadBarcode: 'Namiřte skener na kód.'
   },
 
   result: {
@@ -50,172 +58,173 @@ const cs = {
   },
 
   footer: {
-    testCardToggleCard: 'Otestovat kartu',
-    testCardToggleBarcode: 'Otestovat sken',
+    testCardToggleCard: 'Vyzkoušet kartu',
+    testCardToggleBarcode: 'Vyzkoušet kód',
     cardUidLabelCard: 'UID karty',
     cardUidLabelBarcode: 'Čárový kód',
-    cardUidPlaceholder: 'Zkuste 10000001',
+    cardUidPlaceholder: 'Např. 10000001',
     checkInSubmit: 'Zapsat příchod',
-    scanHintHtmlCard: 'Čeká se na kartu <span>•</span> Tab správa členů <span>•</span> F11 celá obrazovka',
-    scanHintHtmlBarcode: 'Čeká se na čárový kód <span>•</span> Tab správa členů <span>•</span> F11 celá obrazovka',
-    scanHintKioskHtmlCard: 'Čeká se na kartu <span>•</span> F11 celá obrazovka',
-    scanHintKioskHtmlBarcode: 'Čeká se na čárový kód <span>•</span> F11 celá obrazovka'
+    scanHintHtmlCard: 'Čekám na kartu <span>•</span> Tab správa členů <span>•</span> F11 celá obrazovka',
+    scanHintHtmlBarcode: 'Čekám na čárový kód <span>•</span> Tab správa členů <span>•</span> F11 celá obrazovka',
+    scanHintKioskHtmlCard: 'Čekám na kartu <span>•</span> F11 celá obrazovka',
+    scanHintKioskHtmlBarcode: 'Čekám na čárový kód <span>•</span> F11 celá obrazovka'
   },
 
   admin: {
-    kicker: 'PRO PERSONÁL',
+    kicker: 'RECEPCE',
     title: 'Správa členů',
-    lockAriaLabel: 'Uzamknout a vrátit se na obrazovku PIN',
-    lockTitle: 'Uzamknout',
-    lockLabel: 'Uzamknout',
-    tabs: { add: 'Přidat člena', renew: 'Členové', history: 'Příchody', payments: 'Platby', settings: 'Nastavení' }
+    lockAriaLabel: 'Zamknout a vrátit se na zadání PIN',
+    lockTitle: 'Zamknout',
+    lockLabel: 'Zamknout',
+    tabs: { add: 'Nový člen', renew: 'Členové', history: 'Příchody', payments: 'Platby', settings: 'Nastavení' }
   },
 
   staffLock: {
-    enter: { heading: 'Zadejte PIN personálu', pinPlaceholder: 'PIN', submit: 'Odemknout', forgot: 'Zapomenutý PIN?' },
+    enter: { heading: 'Zadejte PIN', pinPlaceholder: 'PIN', submit: 'Odemknout', forgot: 'Zapomněli jste PIN?' },
     setup: {
-      heading: 'Nastavte PIN personálu',
-      hint: 'Zvolte 4-8místný PIN. Personál recepce jej použije k otevření správy členů.',
+      heading: 'Nastavte PIN',
+      hint: 'PIN má 4 až 8 číslic. Recepce jím otevírá správu členů.',
       newPinPlaceholder: 'Nový PIN',
-      confirmPinPlaceholder: 'Potvrďte PIN',
+      confirmPinPlaceholder: 'Zopakujte PIN',
       submit: 'Nastavit PIN',
-      pinsDoNotMatch: 'PINy se neshodují.'
+      pinsDoNotMatch: 'Zadané PINy se liší.'
     },
     recover: {
-      heading: 'Obnovit PIN pomocí obnovovacího kódu',
-      hint: 'Zadejte obnovovací kód zobrazený při posledním nastavení PIN.',
+      heading: 'Nový PIN pomocí kódu pro obnovení',
+      hint: 'Zadejte kód pro obnovení, který se zobrazil při nastavení PIN.',
       codePlaceholder: 'XXXXX-XXXXX',
       newPinPlaceholder: 'Nový PIN',
-      confirmPinPlaceholder: 'Potvrďte nový PIN',
-      submit: 'Obnovit PIN',
+      confirmPinPlaceholder: 'Zopakujte nový PIN',
+      submit: 'Nastavit nový PIN',
       cancel: 'Zpět na zadání PIN',
-      pinsDoNotMatch: 'Nové PINy se neshodují.'
+      pinsDoNotMatch: 'Zadané PINy se liší.'
     },
     reveal: {
-      heading: 'Váš obnovovací kód',
-      hint: 'Zapište si jej a uschovejte na bezpečném místě. Je to jediný způsob, jak se dostat zpět, pokud je PIN personálu zapomenut, a znovu se nezobrazí.',
-      continueButton: 'Uloženo, pokračovat'
+      heading: 'Kód pro obnovení',
+      hint: 'Zapište si ho a dobře uschovejte. Když zapomenete PIN, jinak se do aplikace nedostanete. Znovu se už nezobrazí.',
+      continueButton: 'Mám ho zapsaný, pokračovat'
     }
   },
 
   addMember: {
-    cardCaptureHintCard: 'Přiložte nepřiřazenou kartu',
-    cardCaptureHintBarcode: 'Naskenujte nepřiřazený čárový kód',
-    cardCaptureSubhint: 'UID se zde zobrazí automaticky.',
-    cardCaptureWaitingCard: 'Čeká se na kartu…',
-    cardCaptureWaitingBarcode: 'Čeká se na čárový kód…',
+    cardCaptureHintCard: 'Přiložte novou kartu',
+    cardCaptureHintBarcode: 'Naskenujte nový čárový kód',
+    cardCaptureWaitingCard: 'Čekám na kartu…',
+    cardCaptureWaitingBarcode: 'Čekám na čárový kód…',
     scanDifferentCardCard: 'Načíst jinou kartu',
-    scanDifferentCardBarcode: 'Naskenovat jiný čárový kód',
+    scanDifferentCardBarcode: 'Načíst jiný kód',
     firstName: 'Jméno',
     lastName: 'Příjmení',
     membershipLegend: 'Členství',
     monthlyTitle: 'Měsíční',
-    monthlyHint: 'Přístup do pevného data',
+    monthlyHint: 'Platí do zvoleného data',
     punchcardTitle: 'Vstupová',
-    punchcardHint: 'Za každý vstup se odečte jeden vstup',
-    validUntil: 'Platnost do',
-    startingPasses: 'Počáteční počet vstupů',
-    amountPaid: 'Zaplacená částka (Kč)',
-    optionalHint: 'volitelné',
+    punchcardHint: 'Každý příchod odečte jeden vstup',
+    validUntil: 'Platí do',
+    startingPasses: 'Počet vstupů',
+    amountPaid: 'Zaplaceno (Kč)',
+    optionalHint: 'nepovinné',
     amountPlaceholder: 'např. 500',
     save: 'Uložit člena',
     tapNextCardCard: 'Přiložte další kartu.',
-    tapNextCardBarcode: 'Naskenujte další čárový kód.',
-    savedSuccessCard: '{name} uložen(a). Karta je připravena.',
-    savedSuccessBarcode: '{name} uložen(a). Čárový kód je připraven.'
+    tapNextCardBarcode: 'Naskenujte další kód.',
+    savedSuccessCard: 'Uloženo: {name}. Karta je připravená.',
+    savedSuccessBarcode: 'Uloženo: {name}. Kód je připravený.'
   },
 
   renew: {
-    searchLabel: 'Najít podle jména člena nebo UID karty',
+    searchLabel: 'Hledat podle jména nebo UID karty',
     searchPlaceholder: 'Začněte psát…',
-    scanToFind: 'Najít přiložením karty',
-    tapCardToJumpCard: 'Přiložte kartu pro přechod na daného člena.',
-    tapCardToJumpBarcode: 'Naskenujte čárový kód pro přechod na daného člena.',
-    jumpedToCard: 'Přechod na kartu {uid}.',
-    expiringWithin: 'Vyprší do',
+    scanToFind: 'Najít kartou',
+    tapCardToJumpCard: 'Přiložte kartu hledaného člena.',
+    tapCardToJumpBarcode: 'Naskenujte kód hledaného člena.',
+    jumpedToCard: 'Nalezena karta {uid}.',
+    expiringWithin: 'Končí do',
     days: 'dní',
     show: 'Zobrazit',
-    showAll: 'Zobrazit všechny členy',
-    noExpiringMembers: 'V tomto období nikomu nevyprší členství.',
-    loadingMembers: 'Načítání členů…',
+    showAll: 'Zobrazit všechny',
+    noExpiringMembers: 'V tomto období nikomu členství nekončí.',
+    loadingMembers: 'Načítám členy…',
     memberCount: '{count} {unit}',
-    noMatchingMembers: 'Žádní odpovídající členové.',
-    editMemberTitle: 'Upravit {name}',
+    noMatchingMembers: 'Hledání nic nenašlo.',
+    editMemberTitle: 'Upravit: {name}',
     plusOneMonth: '+1 měsíc',
     plusTenPasses: '+10 vstupů',
-    customDateButton: 'Vlastní datum',
+    customDateButton: 'Jiné datum',
     status: {
       active: 'Aktivní',
       // "Ještě {count} {unit}" rather than a verb form: it stays grammatical across all three Czech
       // plural forms (1 den / 3 dny / 5 dní), which "zbývá/zbývají" would not.
       expiringSoon: 'Ještě {count} {unit}',
       lastDay: 'Poslední den',
-      expired: 'Vypršelo {date}',
-      frozen: 'Zmrazeno',
+      expired: 'Skončilo {date}',
+      frozen: 'Pozastaveno',
       cancelled: 'Zrušeno',
       passes: '{count} {unit}',
       passesLow: 'Ještě {count} {unit}',
       noPasses: 'Bez vstupů',
-      unknown: 'Neznámé'
+      unknown: 'Neznámý stav'
     },
     metaMonthlyUntil: 'Měsíční · do {date}',
     metaMonthlyEnded: 'Měsíční · skončilo {date}',
     metaMonthlyNoDate: 'Měsíční · bez data konce',
     metaPunchcard: 'Vstupová',
-    renewedMonthly: 'Měsíční přístup prodloužen do {date}.',
-    renewedPunchcard: 'Vstupová nyní obsahuje {count} {unit}.',
+    renewedMonthly: 'Platí do {date}.',
+    renewedPunchcard: 'Zbývá vstupů: {count}.',
     renewResult: '{name}: {change}',
-    updatedSuccess: '{name} aktualizován(a).',
-    deletedSuccess: '{name} byl(a) odstraněn(a).'
+    updatedSuccess: 'Uloženo: {name}.',
+    deletedSuccess: 'Smazáno: {name}.'
   },
 
   edit: {
     kicker: 'ÚPRAVA ČLENA',
     titleDefault: 'Údaje o členovi',
-    titleEditMember: 'Upravit {name}',
-    titleSetEndDate: 'Nastavit konec platnosti pro {name}',
-    chooseExactDate: 'Zvolte přesný poslední den přístupu.',
+    titleEditMember: 'Upravit: {name}',
+    titleSetEndDate: 'Konec platnosti: {name}',
+    chooseExactDate: 'Vyberte poslední den, kdy může přijít.',
     cancel: 'Zrušit',
     changePhoto: 'Změnit fotku…',
     takePhoto: 'Vyfotit',
     chooseFile: 'Vybrat soubor…',
     removePhoto: 'Odebrat fotku',
-    tapReplacementCardCard: 'Přiložte náhradní kartu.',
-    tapReplacementCardBarcode: 'Naskenujte náhradní čárový kód.',
-    cardCapturedCard: 'Karta {uid} načtena.',
-    cardCapturedBarcode: 'Čárový kód {uid} načten.',
+    tapReplacementCardCard: 'Přiložte novou kartu.',
+    tapReplacementCardBarcode: 'Naskenujte nový kód.',
+    cardCapturedCard: 'Načtena karta {uid}.',
+    cardCapturedBarcode: 'Načten kód {uid}.',
     firstName: 'Jméno',
     lastName: 'Příjmení',
     cardUid: 'UID karty',
-    scanReplace: 'Nahradit kartu přiložením',
-    status: 'Stav',
+    scanReplace: 'Přiložit novou kartu',
+    status: 'Stav členství',
     statusActive: 'Aktivní',
-    statusFrozen: 'Pozastaveno',
-    statusCancelled: 'Zrušeno',
+    statusFrozen: 'Pozastavené',
+    statusCancelled: 'Zrušené',
     membership: 'Členství',
     membershipMonthly: 'Měsíční',
     membershipPunchcard: 'Vstupová',
-    customEndDate: 'Vlastní konec platnosti',
-    entriesRemaining: 'Zbývající vstupy',
-    amountPaid: 'Zaplaceno při této návštěvě (Kč)',
+    customEndDate: 'Platí do',
+    entriesRemaining: 'Zbývá vstupů',
+    amountPaid: 'Zaplaceno teď (Kč)',
     exportData: 'Exportovat data…',
-    deleteMember: 'Odstranit člena…',
+    deleteMember: 'Smazat člena…',
     saveChanges: 'Uložit změny',
-    photoUpdated: 'Fotka aktualizována.',
+    photoUpdated: 'Fotka uložena.',
     photoRemoved: 'Fotka odebrána.',
-    dataExported: 'Data exportována do {path}',
-    deleteConfirm: 'Trvale smazat jméno, fotku a kartu člena {name}? Historie příchodů a plateb zůstane zachována, anonymizovaná, pro účely docházky a evidence tržeb. Tuto akci nelze vrátit zpět. Pokračovat?',
+    dataExported: 'Data uložena do {path}',
+    deleteConfirm: 'Smazat člena {name}? Jméno, fotka a karta se trvale odstraní. Příchody a platby zůstanou v evidenci bez jména. Nelze vrátit zpět.',
     discard: {
-      passesLost: '{count} nevyužitých {unit}',
-      daysLost: '{count} zbývajících {unit}',
-      removes: ' Tímto se odstraní {parts}.',
-      reactivates: ' {name} je momentálně {status} a bude znovu aktivován(a).',
+      // Assembled by describeDiscard() in renderer.js as "{name}: Propadnou <part> a <part>." -- each
+      // part carries its count in brackets so the phrase agrees whatever the number is.
+      passesLost: 'nevyužité vstupy ({count})',
+      daysLost: 'zbývající dny ({count})',
+      removes: ' Propadnou {parts}.',
+      reactivates: ' Členství je teď {status} a znovu se aktivuje.',
       confirm: '{name}:{lossText}{reactivateText} Pokračovat?',
       and: 'a'
     },
     riskyChange: {
-      statusChange: ' Změní jejich stav na {status}.',
-      cardChange: ' Nahradí jejich přiřazenou kartu (byla {oldUid}, nově {newUid}).',
+      statusChange: ' Členství bude {status}.',
+      cardChange: ' Karta se změní z {oldUid} na {newUid}.',
       confirm: '{name}:{changes} Pokračovat?'
     }
   },
@@ -230,13 +239,13 @@ const cs = {
     heading: 'Příchody',
     loadMore: 'Načíst další',
     exportCsv: 'Exportovat CSV…',
-    loading: 'Načítání…',
-    loadingCheckIns: 'Načítání příchodů…',
+    loading: 'Načítám…',
+    loadingCheckIns: 'Načítám příchody…',
     exporting: 'Exportuji…',
-    noMatches: 'Žádné příchody neodpovídají zadaným filtrům.',
+    noMatches: 'Filtru neodpovídá žádný příchod.',
     shownCount: 'Zobrazeno: {count}',
-    exportedTruncated: 'Exportováno posledních {count} odpovídajících řádků — zúžte rozsah dat pro získání starších záznamů.',
-    exportedOk: 'Exportováno {count} řádků do {path}.'
+    exportedTruncated: 'Exportováno nejnovějších řádků: {count}. Starší získáte užším rozsahem dat.',
+    exportedOk: 'Exportováno řádků: {count}. Soubor: {path}'
   },
 
   payments: {
@@ -247,147 +256,138 @@ const cs = {
     filter: 'Filtrovat',
     clear: 'Vymazat',
     heading: 'Platby',
-    loading: 'Načítání plateb…',
+    loading: 'Načítám platby…',
     exporting: 'Exportuji…',
-    noMatches: 'Žádné platby neodpovídají zadaným filtrům.',
-    totalShown: 'Celkem: {amount} Kč (zobrazeno {count})',
-    exportedTruncated: 'Exportováno posledních {count} odpovídajících řádků — zúžte rozsah dat pro získání starších záznamů.',
-    exportedOk: 'Exportováno {count} řádků do {path}.',
+    noMatches: 'Filtru neodpovídá žádná platba.',
+    totalShown: 'Celkem: {amount} Kč (zobrazeno: {count})',
+    exportedTruncated: 'Exportováno nejnovějších řádků: {count}. Starší získáte užším rozsahem dat.',
+    exportedOk: 'Exportováno řádků: {count}. Soubor: {path}',
     eventSignup: 'Nový člen',
-    eventRenewal: 'Obnovení',
+    eventRenewal: 'Prodloužení',
     rowDescription: '{event} · {plan}'
   },
 
   settings: {
     branding: {
-      heading: 'Značka posilovny',
-      hint: 'Zobrazí se místo výchozí značky na obrazovce check-inu, v hlavičce pro personál a na '
-        + 'obrazovce PIN. Ponechte prázdné pro výchozí vzhled.',
+      heading: 'Název a logo posilovny',
+      hint: 'Název se zobrazí na obrazovce pro členy, v záhlaví recepce a u zadání PIN. Logo se '
+        + 'zobrazí v záhlaví recepce a u zadání PIN. Když nic nevyplníte, použije se výchozí vzhled.',
       chooseLogo: 'Vybrat logo…',
       removeLogo: 'Odebrat logo',
       namePlaceholder: 'Název posilovny',
       saveName: 'Uložit název',
-      logoUpdated: 'Logo aktualizováno.',
+      logoUpdated: 'Logo uloženo.',
       logoRemoved: 'Logo odebráno.',
       nameSaved: 'Název uložen.'
     },
     appearance: {
       heading: 'Vzhled',
-      hint: 'Toto nastavení se uloží a příště ho už nastavovat nemusíte.',
+      hint: 'Uloží se v tomto počítači.',
       dark: 'Tmavý',
       light: 'Světlý',
       lightModeAriaLabel: 'Světlý režim',
       themes: {
-        slate: { name: 'Modrá', subtitle: 'Výchozí' },
-        zinc: { name: 'Oranžová', subtitle: 'Teplá' },
-        emerald: { name: 'Tyrkysová', subtitle: 'Chladná' },
-        indigo: { name: 'Fialová', subtitle: 'Výrazná' }
+        slate: { name: 'Modrá' },
+        zinc: { name: 'Oranžová' },
+        emerald: { name: 'Tyrkysová' },
+        indigo: { name: 'Fialová' }
       }
     },
     language: {
       heading: 'Jazyk',
-      hint: 'Změna se projeví okamžitě, jen v tomto počítači.',
+      hint: 'Projeví se hned, jen v tomto počítači.',
       english: 'English',
       czech: 'Čeština'
     },
     scanMethod: {
-      heading: 'Způsob skenování',
-      hint: 'Změní pokyny a ikonu na obrazovce podle vaší čtečky -- čtečka karet i skener čárových '
-        + 'kódů se připojují a fungují stejně, jde jen o to ukázat členům správné pokyny pro to, '
-        + 'co skutečně máte na recepci.',
+      heading: 'Čtečka na recepci',
+      hint: 'Mění pokyny a ikonu, které vidí členové. Obě zařízení fungují stejně, vyberte to, které '
+        + 'máte na recepci.',
       card: 'Čtečka karet',
-      barcode: 'Skener čárových kódů'
+      barcode: 'Čtečka čárových kódů'
     },
     pin: {
-      heading: 'Změnit PIN personálu',
-      hint: '4-8 číslic, pouze čísla.',
-      currentPlaceholder: 'Současný PIN',
+      heading: 'Změna PIN',
+      hint: '4 až 8 číslic.',
+      currentPlaceholder: 'Stávající PIN',
       newPlaceholder: 'Nový PIN',
-      confirmPlaceholder: 'Potvrďte nový PIN',
-      submit: 'Aktualizovat PIN',
-      updated: 'PIN aktualizován.',
-      pinsDoNotMatch: 'Nové PINy se neshodují.',
-      regenerateRecovery: 'Vygenerovat nový obnovovací kód…',
-      regeneratePrompt: 'Zadejte současný PIN pro vygenerování nového obnovovacího kódu:',
-      newRecoveryCodeAlert: 'Nový obnovovací kód: {code}\n\nZapište si jej hned teď -- znovu se nezobrazí a starý kód přestane fungovat.'
+      confirmPlaceholder: 'Zopakujte nový PIN',
+      submit: 'Změnit PIN',
+      updated: 'PIN změněn.',
+      pinsDoNotMatch: 'Zadané PINy se liší.',
+      regenerateRecovery: 'Vytvořit nový kód pro obnovení…',
+      regeneratePrompt: 'Zadejte stávající PIN. Vytvoří se nový kód pro obnovení.',
+      newRecoveryCodeAlert: 'Nový kód pro obnovení: {code}\n\nHned si ho zapište. Znovu se nezobrazí a starý kód už neplatí.'
     },
     backup: {
       heading: 'Záloha',
-      hint: 'Uložte kopii databáze členů na místo dle vašeho výběru. Fotky členů a logo vaší '
-        + 'posilovny jsou soubory na disku, nikoli záznamy v databázi, a proto se ukládají do složky '
-        + 'vedle zálohy -- uchovávejte je pohromadě.',
-      exportButton: 'Exportovat zálohu…',
+      hint: 'Uloží kopii databáze členů. Fotky a logo se uloží do složky vedle souboru se zálohou. '
+        + 'Uchovávejte je spolu.',
+      exportButton: 'Uložit zálohu…',
       savedSuccess: 'Záloha uložena do {path}',
-      savedSuccessWithFiles: 'Záloha uložena do {path} a {count} soubor(ů) fotek/loga do složky vedle ní.',
+      savedSuccessWithFiles: 'Záloha uložena do {path}. Fotky a logo jsou ve složce vedle ní (souborů: {count}).',
       failed: 'Zálohu se nepodařilo uložit.'
     },
     diagnostics: {
       heading: 'Diagnostika',
-      hint: 'Pokud něco selže, uloží se záznam o tom, co se stalo, aby to bylo možné skutečně '
-        + 'prošetřit -- z tohoto počítače se sám od sebe nikam neodesílá. Exportujte jej a soubor '
-        + 'pošlete, pokud o to budete požádáni.',
-      exportButton: 'Exportovat log…',
-      openFolderButton: 'Zobrazit soubor s logem ve složce',
-      savedSuccess: 'Log uložen do {path}'
+      hint: 'Aplikace si v tomto počítači zapisuje chyby. Nikam se nic neposílá. Když vás o záznam '
+        + 'někdo požádá, uložte ho a pošlete.',
+      exportButton: 'Uložit záznam chyb…',
+      openFolderButton: 'Otevřít složku se záznamem',
+      savedSuccess: 'Záznam uložen do {path}'
     },
     kiosk: {
       heading: 'Kioskový režim',
-      hintHtml: 'Zobrazí zákaznickou obrazovku přes celou obrazovku a zablokuje Alt+F4 i tlačítko '
-        + 'zavřít, aby ji člen u recepce omylem nezavřel nebo neminimalizoval. Nejde o úplné '
-        + 'uzamčení počítače &mdash; klávesa Windows, Ctrl+Alt+Delete a Správce úloh fungují dál. '
-        + 'Vypnout to můžete odsud vždy. '
-        + '<strong>Projeví se jen společně se zapnutým režimem dvou obrazovek níže</strong> '
-        + '&mdash; bez druhé, zákaznické obrazovky toto nastavení nic neovlivní.',
-      enable: 'Povolit kioskový režim'
+      hintHtml: 'Obrazovka pro členy běží přes celou obrazovku a nejde zavřít přes Alt+F4 ani křížkem. '
+        + 'Klávesa Windows, Ctrl+Alt+Delete a Správce úloh fungují dál. '
+        + '<strong>Funguje jen se zapnutým režimem dvou monitorů.</strong>',
+      enable: 'Zapnout kioskový režim'
     },
     dualScreen: {
-      heading: 'Režim dvou obrazovek',
-      hint: 'Pokud jsou připojeny dva monitory, použijte jeden výhradně pro výsledky příchodů a '
-        + 'druhý výhradně pro personál (už žádné přepínání mezi nimi). Projeví se až při dalším '
-        + 'spuštění aplikace, a pouze pokud je skutečně rozpoznán druhý displej.',
-      enable: 'Používat dvě obrazovky, pokud jsou dostupné'
+      heading: 'Dva monitory',
+      hint: 'Když jsou připojené dva monitory, na jednom vidí členové výsledek příchodu a na druhém '
+        + 'je tato správa. Projeví se při příštím spuštění aplikace.',
+      enable: 'Použít dva monitory, když jsou připojené'
     },
     retention: {
-      heading: 'Uchovávání dat',
-      hint: 'Záznamy o příchodech starší než toto se automaticky smažou při každém spuštění '
-        + 'aplikace. Profily členů a historie plateb/obnovení nejsou tímto nastavením dotčeny.',
-      deleteOlderThan: 'Smazat příchody starší než',
+      heading: 'Mazání starých příchodů',
+      hint: 'Starší příchody se smažou při každém spuštění aplikace. Členové, platby a prodloužení '
+        + 'zůstávají.',
+      deleteOlderThan: 'Mazat příchody starší než',
       days: 'dní',
       save: 'Uložit',
-      saved: 'Uloženo. Projeví se od dalšího spuštění.'
+      saved: 'Uloženo. Projeví se při příštím spuštění.'
     },
     cooldown: {
-      heading: 'Okno opětovného vstupu',
-      hint: 'Přiložení karty v tomto okně znovu odbaví člena bez odečtení dalšího vstupu -- chrání '
-        + 'proti nechtěnému dvojímu přiložení a platí i tehdy, pokud tímto přiložením vyčerpal '
-        + 'poslední vstup. Okno se počítá od přiložení, při kterém byl vstup skutečně odečten. '
-        + 'Netýká se měsíčních členství, která vstupy nepoužívají. Nastavením na 0 tuto funkci vypnete.',
-      noChargeWithin: 'Bez odečtení vstupu do',
+      heading: 'Opakovaný příchod na vstupovou',
+      hint: 'Když člen přiloží vstupovou kartu znovu během této doby, projde bez odečtení dalšího '
+        + 'vstupu, i když mu první příchod vzal poslední. Doba se počítá od příchodu, který vstup '
+        + 'odečetl. Měsíčních členství se to netýká. Hodnota 0 funkci vypne.',
+      noChargeWithin: 'Neodečítat další vstup do',
       hours: 'hodin',
       save: 'Uložit',
-      saved: 'Uloženo. Platí od nynějška pro každý příchod.'
+      saved: 'Uloženo. Platí od teď.'
     },
     updates: {
       heading: 'Aktualizace',
-      currentVersion: 'Aktuálně spuštěná verze:',
-      hint: 'Kontrola aktualizací probíhá automaticky jednou denně. Nic se nestáhne ani '
-        + 'nenainstaluje bez vašeho potvrzení. Tlačítkem níže si aktualizaci můžete kdykoli '
-        + 'vyžádat i ručně.',
+      currentVersion: 'Verze:',
+      hint: 'Aplikace hledá aktualizace jednou denně. Nic nestáhne ani nenainstaluje, dokud to tady '
+        + 'nepotvrdíte.',
       check: 'Zkontrolovat aktualizace',
       download: 'Stáhnout aktualizaci',
       install: 'Restartovat a nainstalovat',
       checking: 'Kontroluji…',
-      checkingLong: 'Kontroluji aktualizace…',
+      checkingLong: 'Hledám aktualizace…',
       checkFailed: 'Kontrola aktualizací selhala. Viz UPDATER_SETUP.md.',
-      available: 'Je dostupná aktualizace {version}.',
+      available: 'Je k dispozici verze {version}.',
       upToDate: 'Máte nejnovější verzi.',
       downloadingStart: 'Stahuji aktualizaci…',
-      downloadFailed: 'Stažení selhalo. Zkuste to znovu.',
+      downloadFailed: 'Stahování selhalo. Zkuste to znovu.',
       downloadingProgress: 'Stahuji aktualizaci… {percent} %',
-      downloaded: 'Aktualizace {version} stažena a připravena.',
+      downloaded: 'Verze {version} je stažená a připravená k instalaci.',
       errorWithMessage: 'Kontrola aktualizací selhala: {message}',
       errorGeneric: 'Kontrola aktualizací selhala.',
-      installConfirm: 'Tímto se Gym Check-in zavře a znovu otevře v nové verzi. Pokračovat?'
+      installConfirm: 'Aplikace se zavře a hned se otevře v nové verzi. Pokračovat?'
     }
   },
 
@@ -397,92 +397,91 @@ const cs = {
   },
 
   camera: {
-    title: 'Vyfotit',
+    title: 'Fotka člena',
     cancel: 'Zrušit',
     retake: 'Vyfotit znovu',
     capture: 'Vyfotit',
-    usePhoto: 'Použít tuto fotku',
-    starting: 'Spouštím kameru…',
-    accessFailed: 'Nepodařilo se získat přístup ke kameře. Zkontrolujte oprávnění a že ji '
-      + 'nepoužívá jiná aplikace.'
+    usePhoto: 'Použít fotku',
+    starting: 'Zapínám kameru…',
+    accessFailed: 'Kamera není dostupná. Zkontrolujte oprávnění a jestli ji nepoužívá jiná aplikace.'
   },
 
   checkin: {
-    pillPunchcard: 'Vstupová · zbývá {count}',
-    pillExpired: 'Měsíční · vypršelo {date}',
-    pillValidUntil: 'Měsíční · platnost do {date}',
+    pillPunchcard: 'Vstupová · zbývá vstupů: {count}',
+    pillExpired: 'Měsíční · skončilo {date}',
+    pillValidUntil: 'Měsíční · platí do {date}',
     pillUidCaptured: 'UID {uid}',
-    pillUidNotCaptured: 'UID nezachyceno',
-    passesRemaining: 'zbývá {count} {unit}',
-    amountPaidPrompt: 'Zaplacená částka (Kč), ponechte prázdné pro přeskočení:',
+    pillUidNotCaptured: 'UID se nenačetlo',
+    passesRemaining: 'Zbývá vstupů: {count}',
+    amountPaidPrompt: 'Zaplacená částka v Kč (když nic, nechte prázdné):',
     reasons: {
-      active: { eyebrow: 'PŘÍCHOD SCHVÁLEN', message: 'Vítejte. Přejeme dobrý trénink.' },
-      punchcard: { eyebrow: 'VSTUP SCHVÁLEN', message: '' },
-      punchcard_recent: { eyebrow: 'VÍTEJTE ZPĚT', message: 'Nedávno jste již byli odbaveni -- žádný další vstup nebyl odečten.' },
-      expired: { eyebrow: 'ČLENSTVÍ VYPRŠELO', message: 'Před vstupem prosím obnovte členství na recepci.' },
-      no_passes: { eyebrow: 'ŽÁDNÉ ZBÝVAJÍCÍ VSTUPY', message: 'Před vstupem prosím obnovte permanentku.' },
-      frozen: { eyebrow: 'ČLENSTVÍ POZASTAVENO', message: 'Před vstupem se prosím obraťte na recepci.' },
-      cancelled: { eyebrow: 'ČLENSTVÍ ZRUŠENO', message: 'Před vstupem se prosím obraťte na recepci.' },
-      unknown_card: { eyebrow: 'KARTA NEROZPOZNÁNA', message: 'Přiřaďte tuto kartu, nebo požádejte člena o zkoušku jiné.' },
-      system_error: { eyebrow: 'PŘÍCHOD NEDOSTUPNÝ', message: 'Karta byla načtena, ale lokální databáze vrátila chybu.' },
-      invalid_uid: { eyebrow: 'KARTU SE NEPODAŘILO NAČÍST', message: 'Zkuste to prosím znovu, nebo se obraťte na recepci.' }
+      active: { eyebrow: 'VSTUP POVOLEN', message: 'Vítejte, ať se trénink vydaří.' },
+      punchcard: { eyebrow: 'VSTUP POVOLEN', message: '' },
+      punchcard_recent: { eyebrow: 'VÍTEJTE ZPĚT', message: 'Před chvílí jste už prošli, vstup se neodečítá.' },
+      expired: { eyebrow: 'ČLENSTVÍ SKONČILO', message: 'Prodlužte si ho prosím na recepci.' },
+      no_passes: { eyebrow: 'VSTUPY DOŠLY', message: 'Dokupte si prosím vstupy na recepci.' },
+      frozen: { eyebrow: 'ČLENSTVÍ POZASTAVENO', message: 'Zastavte se prosím na recepci.' },
+      cancelled: { eyebrow: 'ČLENSTVÍ ZRUŠENO', message: 'Zastavte se prosím na recepci.' },
+      unknown_card: { eyebrow: 'KARTA NENÍ V SYSTÉMU', message: 'Přiřaďte kartu členovi, nebo zkuste jinou.' },
+      system_error: { eyebrow: 'CHYBA SYSTÉMU', message: 'Karta se načetla, ale databáze vrátila chybu.' },
+      invalid_uid: { eyebrow: 'KARTU NEJDE PŘEČÍST', message: 'Přiložte ji prosím znovu, nebo se zastavte na recepci.' }
     },
     notif: {
       approvedTitle: '✅ {name}',
       deniedTitle: '⛔ {name}',
       unknownTitle: '❔ Neznámá karta',
-      errorTitle: '⚠️ Chyba příchodu',
-      unreadableTitle: '⚠️ Kartu nelze načíst',
-      activeBody: 'Platné členství · platnost do {validUntil}',
-      punchcardBody: 'Platná permanentka · zbývá {count} {unit}',
-      expiredBody: 'ZAMÍTNUTO -- členství vypršelo {validUntil}',
-      noPassesBody: 'ZAMÍTNUTO -- permanentka je prázdná',
-      frozenBody: 'ZAMÍTNUTO -- členství je pozastaveno',
-      cancelledBody: 'ZAMÍTNUTO -- členství je zrušeno',
-      unknownBody: 'Nerozpoznáno -- UID {uid}',
-      errorBody: 'Karta byla načtena, ale databáze vrátila chybu.',
-      unreadableBody: 'Požádejte člena, aby kartu přiložil znovu.'
+      errorTitle: '⚠️ Chyba při příchodu',
+      unreadableTitle: '⚠️ Kartu nejde přečíst',
+      activeBody: 'Platné členství · do {validUntil}',
+      punchcardBody: 'Vstupová · zbývá vstupů: {count}',
+      expiredBody: 'ZAMÍTNUTO: členství skončilo {validUntil}',
+      noPassesBody: 'ZAMÍTNUTO: došly vstupy',
+      frozenBody: 'ZAMÍTNUTO: členství je pozastavené',
+      cancelledBody: 'ZAMÍTNUTO: členství je zrušené',
+      unknownBody: 'Neznámá karta: UID {uid}',
+      errorBody: 'Karta se načetla, ale databáze vrátila chybu.',
+      unreadableBody: 'Ať člen přiloží kartu znovu.'
     }
   },
 
   errors: {
-    invalid_uid: 'Před uložením přiložte platnou kartu.',
-    invalid_name: 'Zadejte jméno a příjmení člena.',
-    invalid_membership_type: 'Zvolte platný typ členství.',
-    invalid_status: 'Zvolte platný stav člena.',
-    invalid_date: 'Zvolte platné datum konce.',
-    invalid_passes: 'Zadejte alespoň jeden počáteční vstup.',
-    invalid_member: 'Zvolte platného člena.',
-    member_not_found: 'Tento člen nebyl nalezen.',
-    card_exists: 'Tato karta je již přiřazena jinému členovi.',
-    not_authorized: 'Vaše relace personálu vypršela. Odemkněte prosím znovu.',
-    invalid_pin: 'PIN musí mít 4-8 číslic.',
-    wrong_pin: 'Nesprávný současný PIN.',
-    wrong_recovery_code: 'Nesprávný obnovovací kód.',
-    locked_out: 'Příliš mnoho pokusů. Počkejte chvíli a zkuste to znovu.',
-    invalid_amount: 'Zadejte platnou částku, nebo pole ponechte prázdné.',
+    invalid_uid: 'Před uložením přiložte kartu.',
+    invalid_name: 'Vyplňte jméno a příjmení.',
+    invalid_membership_type: 'Vyberte typ členství.',
+    invalid_status: 'Vyberte stav členství.',
+    invalid_date: 'Vyberte platné datum konce.',
+    invalid_passes: 'Počet vstupů musí být aspoň 1.',
+    invalid_member: 'Vyberte člena.',
+    member_not_found: 'Člen nebyl nalezen.',
+    card_exists: 'Tato karta už patří jinému členovi.',
+    not_authorized: 'Správa se zamkla. Zadejte znovu PIN.',
+    invalid_pin: 'PIN musí mít 4 až 8 číslic.',
+    wrong_pin: 'Stávající PIN nesouhlasí.',
+    wrong_recovery_code: 'Kód pro obnovení nesouhlasí.',
+    locked_out: 'Příliš mnoho pokusů. Chvíli počkejte a zkuste to znovu.',
+    invalid_amount: 'Zadejte platnou částku, nebo pole nechte prázdné.',
     invalid_photo: 'Vyberte obrázek JPG, PNG nebo WEBP do 8 MB.',
-    invalid_retention_days: 'Zadejte celé číslo dní, 1 nebo více.',
-    invalid_cooldown_hours: 'Zadejte celé číslo hodin, 0 nebo více.',
+    invalid_retention_days: 'Zadejte celý počet dní (aspoň 1).',
+    invalid_cooldown_hours: 'Zadejte celý počet hodin (0 nebo víc).',
     operation_failed: 'Změnu se nepodařilo uložit. Zkuste to znovu.',
-    no_log_yet: 'Zatím nebylo nic zaznamenáno -- není co exportovat.'
+    no_log_yet: 'Záznam chyb zatím neexistuje.'
   },
 
   main: {
     confirm: {
-      quit: 'Ukončením aplikace se zastaví příchody členů, dokud ji znovu nespustíte. Pokračovat?',
-      quitWithUnsavedChanges: 'Ukončením aplikace se zastaví příchody členů a ztratí se neuložené změny v otevřeném formuláři. Pokračovat?',
+      quit: 'Po ukončení aplikace nepůjde přikládat karty, dokud ji znovu nespustíte. Ukončit?',
+      quitWithUnsavedChanges: 'Po ukončení aplikace nepůjde přikládat karty a neuložené změny ve formuláři se ztratí. Ukončit?',
       quitCancel: 'Zrušit',
       quitConfirm: 'Ukončit'
     },
     dialogs: {
-      exportHistoryTitle: 'Export historie příchodů',
+      exportHistoryTitle: 'Export příchodů',
       exportPaymentsTitle: 'Export plateb',
       exportMemberDataTitle: 'Export dat člena',
-      exportBackupTitle: 'Export zálohy databáze',
-      exportLogTitle: 'Export logu',
-      choosePhotoTitle: 'Vybrat fotku člena',
-      chooseLogoTitle: 'Vybrat logo posilovny',
+      exportBackupTitle: 'Záloha databáze',
+      exportLogTitle: 'Uložit záznam chyb',
+      choosePhotoTitle: 'Vyberte fotku člena',
+      chooseLogoTitle: 'Vyberte logo posilovny',
       csvFilterName: 'CSV',
       jsonFilterName: 'JSON',
       sqliteFilterName: 'Databáze SQLite',
@@ -496,8 +495,8 @@ const cs = {
       outcome: 'Výsledek',
       reason: 'Důvod',
       date: 'Datum',
-      eventType: 'Typ',
-      membershipType: 'Plán',
+      eventType: 'Událost',
+      membershipType: 'Typ členství',
       amount: 'Částka (Kč)'
     }
   }

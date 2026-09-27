@@ -896,7 +896,7 @@ function renderHistoryRow(entry) {
 
   const who = document.createElement('div');
   const name = document.createElement('strong');
-  name.textContent = entry.name;
+  name.textContent = checkInDisplayName(entry);
   const uid = document.createElement('small');
   uid.textContent = window.i18n.t(currentLang, 'checkin.pillUidCaptured', { uid: entry.uid });
   who.append(name, uid);
@@ -1102,6 +1102,13 @@ async function jumpToActivityFeedEntry(entry) {
   }
 }
 
+// A check-in with no member attached (an unknown or unreadable card) has no name of its own. The label
+// is chosen here, at draw time, rather than stored, so it follows a later language switch too.
+function checkInDisplayName(entry) {
+  if (entry.name) return entry.name;
+  return window.i18n.t(currentLang, entry.reason === 'unknown_card' ? 'common.unknownCard' : 'common.unrecognisedCard');
+}
+
 function renderActivityFeed() {
   activityFeedList.replaceChildren();
   if (!activityFeedEntries.length) {
@@ -1116,7 +1123,7 @@ function renderActivityFeed() {
     row.className = `activity-feed-row ${entry.allowed ? 'is-approved' : 'is-denied'}`;
     row.addEventListener('click', () => jumpToActivityFeedEntry(entry));
     const name = document.createElement('strong');
-    name.textContent = entry.name;
+    name.textContent = checkInDisplayName(entry);
     const status = document.createElement('span');
     status.textContent = entry.allowed ? window.i18n.t(currentLang, 'common.approved') : (reasonEyebrow(entry.reason) || window.i18n.t(currentLang, 'common.denied'));
     const time = document.createElement('time');
@@ -1131,7 +1138,7 @@ function pushActivityFeedEntry(result) {
     uid: result.uid,
     allowed: Boolean(result.allowed),
     reason: result.reason,
-    name: result.member?.name || window.i18n.t(currentLang, result.reason === 'unknown_card' ? 'common.unknownCard' : 'common.unrecognisedCard'),
+    name: result.member?.name || null,
     checkedInAt: new Date()
   });
   activityFeedEntries.length = Math.min(activityFeedEntries.length, ACTIVITY_FEED_LIMIT);
@@ -2164,6 +2171,30 @@ appearanceModeToggle.addEventListener('change', () => {
 // Sync the controls above to whatever theme.js already applied -- doesn't wait for the Settings tab
 // to be opened, since that's cheap and one less thing to remember to call from setAdminTab.
 applyAppearance(document.documentElement.dataset.theme, document.documentElement.dataset.mode);
+
+// --- Settings help bubbles (Carbon toggletips) -----------------------------------------------
+// Each Settings section's explanation sits behind an (i) button next to its heading instead of
+// always being on screen. Hovering shows it (pure CSS, see .toggletip in styles.css); a click pins it
+// open so it can be read without holding the mouse still, until a click anywhere else or Escape.
+function setToggletipOpen(tip, open) {
+  tip.classList.toggle('is-open', open);
+  tip.querySelector('.toggletip-button').setAttribute('aria-expanded', String(open));
+}
+
+document.addEventListener('click', (event) => {
+  const clickedTip = event.target.closest('.toggletip');
+  document.querySelectorAll('.toggletip.is-open').forEach((tip) => {
+    if (tip !== clickedTip) setToggletipOpen(tip, false);
+  });
+  if (clickedTip && event.target.closest('.toggletip-button')) {
+    setToggletipOpen(clickedTip, !clickedTip.classList.contains('is-open'));
+  }
+});
+
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') return;
+  document.querySelectorAll('.toggletip.is-open').forEach((tip) => setToggletipOpen(tip, false));
+});
 
 // --- Language ----------------------------------------------------------------------------------
 // Unlike appearance (above), the language choice is main-authoritative (see database.js's app_meta

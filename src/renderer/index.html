@@ -168,7 +168,7 @@
           <div id="admin-add" class="admin-section">
             <div id="card-capture" class="card-capture">
               <span class="capture-dot"></span>
-              <div><strong data-i18n="addMember.cardCaptureHintCard">Tap an unassigned card</strong><small data-i18n="addMember.cardCaptureSubhint">The UID will appear here automatically.</small></div>
+              <div><strong data-i18n="addMember.cardCaptureHintCard">Tap an unassigned card</strong></div>
               <output id="captured-uid" data-i18n="addMember.cardCaptureWaitingCard">Waiting for card…</output>
               <button id="scan-different-card" class="text-button" type="button" hidden data-i18n="addMember.scanDifferentCardCard">Scan a different card</button>
             </div>
@@ -321,11 +321,13 @@
 
           <div id="admin-settings" class="admin-section" hidden>
             <div class="settings-block">
-              <h3 data-i18n="settings.branding.heading">Gym branding</h3>
-              <p class="settings-hint" data-i18n="settings.branding.hint">
-                Shown in place of the default mark on the check-in screen, the staff header, and the
-                PIN screen. Leave blank to use the default look.
-              </p>
+              <div class="settings-heading">
+                <h3 data-i18n="settings.branding.heading">Gym branding</h3>
+                <span class="toggletip">
+                  <button class="toggletip-button" type="button" aria-expanded="false" aria-controls="tip-branding" data-i18n-aria-label="common.moreInfo" aria-label="More info"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8.5 11V6.5h-2v1h1V11H6v1h4v-1z"/><circle cx="8" cy="4.5" r=".75"/><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0-13a6 6 0 1 0 0 12A6 6 0 0 0 8 2z"/></svg></button>
+                  <span id="tip-branding" class="toggletip-bubble" data-i18n="settings.branding.hint">The name shows on the check-in screen, in the staff header and on the PIN screen. The logo shows in the staff header and on the PIN screen. Leave both empty for the default look.</span>
+                </span>
+              </div>
               <div class="edit-photo-row">
                 <span id="branding-logo-placeholder" class="branding-logo-placeholder" aria-hidden="true">
                   <svg viewBox="0 0 42 42"><path d="M7 16h5v-4h5v18h-5v-4H7V16Zm28 0h-5v-4h-5v18h5v-4h5V16ZM17 19h8v4h-8v-4Z"/></svg>
@@ -344,10 +346,13 @@
             </div>
 
             <div class="settings-block">
-              <h3 data-i18n="settings.appearance.heading">Appearance</h3>
-              <p class="settings-hint" data-i18n="settings.appearance.hint">
-                Saved on this PC, so it doesn't need setting again next launch.
-              </p>
+              <div class="settings-heading">
+                <h3 data-i18n="settings.appearance.heading">Appearance</h3>
+                <span class="toggletip">
+                  <button class="toggletip-button" type="button" aria-expanded="false" aria-controls="tip-appearance" data-i18n-aria-label="common.moreInfo" aria-label="More info"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8.5 11V6.5h-2v1h1V11H6v1h4v-1z"/><circle cx="8" cy="4.5" r=".75"/><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0-13a6 6 0 1 0 0 12A6 6 0 0 0 8 2z"/></svg></button>
+                  <span id="tip-appearance" class="toggletip-bubble" data-i18n="settings.appearance.hint">Saved on this PC.</span>
+                </span>
+              </div>
               <div class="appearance-mode-row">
                 <span data-i18n="settings.appearance.dark">Dark</span>
                 <label class="mode-switch">
@@ -360,29 +365,30 @@
                 <button class="theme-swatch" type="button" data-theme-choice="slate" role="radio" aria-checked="false">
                   <span class="theme-swatch-preview" aria-hidden="true"><span class="swatch-dot swatch-dot-bg"></span><span class="swatch-dot swatch-dot-accent"></span></span>
                   <strong data-i18n="settings.appearance.themes.slate.name">Blue</strong>
-                  <small data-i18n="settings.appearance.themes.slate.subtitle">Default</small>
                 </button>
                 <button class="theme-swatch" type="button" data-theme-choice="zinc" role="radio" aria-checked="false">
                   <span class="theme-swatch-preview" aria-hidden="true"><span class="swatch-dot swatch-dot-bg"></span><span class="swatch-dot swatch-dot-accent"></span></span>
                   <strong data-i18n="settings.appearance.themes.zinc.name">Orange</strong>
-                  <small data-i18n="settings.appearance.themes.zinc.subtitle">Warm</small>
                 </button>
                 <button class="theme-swatch" type="button" data-theme-choice="emerald" role="radio" aria-checked="false">
                   <span class="theme-swatch-preview" aria-hidden="true"><span class="swatch-dot swatch-dot-bg"></span><span class="swatch-dot swatch-dot-accent"></span></span>
                   <strong data-i18n="settings.appearance.themes.emerald.name">Teal</strong>
-                  <small data-i18n="settings.appearance.themes.emerald.subtitle">Cool</small>
                 </button>
                 <button class="theme-swatch" type="button" data-theme-choice="indigo" role="radio" aria-checked="false">
                   <span class="theme-swatch-preview" aria-hidden="true"><span class="swatch-dot swatch-dot-bg"></span><span class="swatch-dot swatch-dot-accent"></span></span>
                   <strong data-i18n="settings.appearance.themes.indigo.name">Purple</strong>
-                  <small data-i18n="settings.appearance.themes.indigo.subtitle">Vivid</small>
                 </button>
               </div>
             </div>
 
             <div class="settings-block">
-              <h3 data-i18n="settings.language.heading">Language</h3>
-              <p class="settings-hint" data-i18n="settings.language.hint">Applies right away, on this PC only.</p>
+              <div class="settings-heading">
+                <h3 data-i18n="settings.language.heading">Language</h3>
+                <span class="toggletip">
+                  <button class="toggletip-button" type="button" aria-expanded="false" aria-controls="tip-language" data-i18n-aria-label="common.moreInfo" aria-label="More info"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8.5 11V6.5h-2v1h1V11H6v1h4v-1z"/><circle cx="8" cy="4.5" r=".75"/><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0-13a6 6 0 1 0 0 12A6 6 0 0 0 8 2z"/></svg></button>
+                  <span id="tip-language" class="toggletip-bubble" data-i18n="settings.language.hint">Applies right away, on this PC only.</span>
+                </span>
+              </div>
               <div id="language-choice-row" class="language-choice-row" role="radiogroup" aria-label="Language">
                 <button class="language-choice" type="button" data-language-choice="en" role="radio" aria-checked="false" data-i18n="settings.language.english">English</button>
                 <button class="language-choice" type="button" data-language-choice="cs" role="radio" aria-checked="false" data-i18n="settings.language.czech">Čeština</button>
@@ -390,12 +396,13 @@
             </div>
 
             <div class="settings-block">
-              <h3 data-i18n="settings.scanMethod.heading">Scan method</h3>
-              <p class="settings-hint" data-i18n="settings.scanMethod.hint">
-                Changes the on-screen instructions and icon to match your reader -- both a card
-                reader and a barcode scanner plug in and work the same way underneath, so this is
-                just about showing members the right instructions for what's actually at the desk.
-              </p>
+              <div class="settings-heading">
+                <h3 data-i18n="settings.scanMethod.heading">Scan method</h3>
+                <span class="toggletip">
+                  <button class="toggletip-button" type="button" aria-expanded="false" aria-controls="tip-scanMethod" data-i18n-aria-label="common.moreInfo" aria-label="More info"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8.5 11V6.5h-2v1h1V11H6v1h4v-1z"/><circle cx="8" cy="4.5" r=".75"/><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0-13a6 6 0 1 0 0 12A6 6 0 0 0 8 2z"/></svg></button>
+                  <span id="tip-scanMethod" class="toggletip-bubble" data-i18n="settings.scanMethod.hint">Changes the instructions and icon members see. Both devices work the same way, so pick the one you have at the desk.</span>
+                </span>
+              </div>
               <div id="scan-method-choice-row" class="scan-method-choice-row" role="radiogroup" aria-label="Scan method">
                 <button class="scan-method-choice" type="button" data-scan-method-choice="card" role="radio" aria-checked="false" data-i18n="settings.scanMethod.card">Card reader</button>
                 <button class="scan-method-choice" type="button" data-scan-method-choice="barcode" role="radio" aria-checked="false" data-i18n="settings.scanMethod.barcode">Barcode scanner</button>
@@ -404,7 +411,7 @@
 
             <div class="settings-block">
               <h3 data-i18n="settings.pin.heading">Change staff PIN</h3>
-              <p class="settings-hint" data-i18n="settings.pin.hint">4-8 digits, numbers only.</p>
+              <p class="settings-hint" data-i18n="settings.pin.hint">4 to 8 digits.</p>
               <form id="change-pin-form" class="settings-form">
                 <input id="change-pin-current" type="password" inputmode="numeric" autocomplete="off" maxlength="8" data-i18n-placeholder="settings.pin.currentPlaceholder" placeholder="Current PIN" required />
                 <input id="change-pin-new" type="password" inputmode="numeric" autocomplete="off" maxlength="8" data-i18n-placeholder="settings.pin.newPlaceholder" placeholder="New PIN" required />
@@ -416,19 +423,25 @@
             </div>
 
             <div class="settings-block">
-              <h3 data-i18n="settings.backup.heading">Backup</h3>
-              <p class="settings-hint" data-i18n="settings.backup.hint">Save a copy of the member database to a location of your choice. Member photos and your gym logo are files on disk rather than database entries, so they are saved into a folder next to the backup -- keep the two together.</p>
+              <div class="settings-heading">
+                <h3 data-i18n="settings.backup.heading">Backup</h3>
+                <span class="toggletip">
+                  <button class="toggletip-button" type="button" aria-expanded="false" aria-controls="tip-backup" data-i18n-aria-label="common.moreInfo" aria-label="More info"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8.5 11V6.5h-2v1h1V11H6v1h4v-1z"/><circle cx="8" cy="4.5" r=".75"/><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0-13a6 6 0 1 0 0 12A6 6 0 0 0 8 2z"/></svg></button>
+                  <span id="tip-backup" class="toggletip-bubble" data-i18n="settings.backup.hint">Saves a copy of the member database. Photos and the logo go into a folder next to the backup file. Keep the two together.</span>
+                </span>
+              </div>
               <button id="export-backup-button" class="renew-button" type="button" data-i18n="settings.backup.exportButton">Export backup…</button>
               <p id="backup-status" class="form-status" role="status"></p>
             </div>
 
             <div class="settings-block">
-              <h3 data-i18n="settings.diagnostics.heading">Diagnostics</h3>
-              <p class="settings-hint" data-i18n="settings.diagnostics.hint">
-                If something goes wrong, this saves a record of what happened so it can actually be
-                looked into -- it never leaves this PC on its own. Export it and send the file if
-                you're asked to.
-              </p>
+              <div class="settings-heading">
+                <h3 data-i18n="settings.diagnostics.heading">Diagnostics</h3>
+                <span class="toggletip">
+                  <button class="toggletip-button" type="button" aria-expanded="false" aria-controls="tip-diagnostics" data-i18n-aria-label="common.moreInfo" aria-label="More info"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8.5 11V6.5h-2v1h1V11H6v1h4v-1z"/><circle cx="8" cy="4.5" r=".75"/><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0-13a6 6 0 1 0 0 12A6 6 0 0 0 8 2z"/></svg></button>
+                  <span id="tip-diagnostics" class="toggletip-bubble" data-i18n="settings.diagnostics.hint">Keeps a record of errors on this PC. Nothing is sent anywhere. If you're asked for it, export the file and send it.</span>
+                </span>
+              </div>
               <div class="update-actions">
                 <button id="export-log-button" class="renew-button" type="button" data-i18n="settings.diagnostics.exportButton">Export log file…</button>
                 <button id="open-log-folder-button" class="text-button" type="button" data-i18n="settings.diagnostics.openFolderButton">Show log file in folder</button>
@@ -437,17 +450,13 @@
             </div>
 
             <div class="settings-block">
-              <h3 data-i18n="settings.kiosk.heading">Kiosk lockdown</h3>
-              <p class="settings-hint" data-i18n-html="settings.kiosk.hintHtml">
-                Makes the customer-facing check-in display fullscreen and blocks Alt+F4 and its
-                close button, so a member at the desk can't casually exit or minimize it. This is a
-                deterrent, not a full lockdown &mdash; the Windows key, Ctrl+Alt+Delete, and Task
-                Manager still work and are outside any app's control. Turning this off always
-                works from here, since reaching this screen already required the staff PIN.
-                <strong>Only takes effect when two-screen mode below is also on</strong> &mdash;
-                there's no customer-facing display otherwise, so this has no effect on your own
-                staff dashboard.
-              </p>
+              <div class="settings-heading">
+                <h3 data-i18n="settings.kiosk.heading">Kiosk lockdown</h3>
+                <span class="toggletip">
+                  <button class="toggletip-button" type="button" aria-expanded="false" aria-controls="tip-kiosk" data-i18n-aria-label="common.moreInfo" aria-label="More info"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8.5 11V6.5h-2v1h1V11H6v1h4v-1z"/><circle cx="8" cy="4.5" r=".75"/><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0-13a6 6 0 1 0 0 12A6 6 0 0 0 8 2z"/></svg></button>
+                  <span id="tip-kiosk" class="toggletip-bubble" data-i18n-html="settings.kiosk.hintHtml">Shows the check-in screen full screen and blocks Alt+F4 and the close button, so members can't close it. The Windows key, Ctrl+Alt+Delete and Task Manager still work. <strong>Only works when two-screen mode is on.</strong></span>
+                </span>
+              </div>
               <label class="toggle-row">
                 <input id="kiosk-lockdown-toggle" type="checkbox" />
                 <span data-i18n="settings.kiosk.enable">Enable kiosk lockdown</span>
@@ -455,12 +464,13 @@
             </div>
 
             <div class="settings-block">
-              <h3 data-i18n="settings.dualScreen.heading">Two-screen mode</h3>
-              <p class="settings-hint" data-i18n="settings.dualScreen.hint">
-                When two monitors are connected, use one purely for check-in results and the other
-                purely for staff (no more switching between them). Only takes effect the next time
-                the app starts, and only when a second display is actually detected.
-              </p>
+              <div class="settings-heading">
+                <h3 data-i18n="settings.dualScreen.heading">Two-screen mode</h3>
+                <span class="toggletip">
+                  <button class="toggletip-button" type="button" aria-expanded="false" aria-controls="tip-dualScreen" data-i18n-aria-label="common.moreInfo" aria-label="More info"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8.5 11V6.5h-2v1h1V11H6v1h4v-1z"/><circle cx="8" cy="4.5" r=".75"/><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0-13a6 6 0 1 0 0 12A6 6 0 0 0 8 2z"/></svg></button>
+                  <span id="tip-dualScreen" class="toggletip-bubble" data-i18n="settings.dualScreen.hint">With two monitors connected, one shows check-in results to members and the other shows this dashboard. Takes effect the next time the app starts.</span>
+                </span>
+              </div>
               <label class="toggle-row">
                 <input id="dual-screen-toggle" type="checkbox" />
                 <span data-i18n="settings.dualScreen.enable">Use two screens when available</span>
@@ -468,11 +478,13 @@
             </div>
 
             <div class="settings-block">
-              <h3 data-i18n="settings.retention.heading">Data retention</h3>
-              <p class="settings-hint" data-i18n="settings.retention.hint">
-                Check-in records older than this are deleted automatically each time the app starts.
-                Member profiles and payment/renewal history are not affected by this setting.
-              </p>
+              <div class="settings-heading">
+                <h3 data-i18n="settings.retention.heading">Data retention</h3>
+                <span class="toggletip">
+                  <button class="toggletip-button" type="button" aria-expanded="false" aria-controls="tip-retention" data-i18n-aria-label="common.moreInfo" aria-label="More info"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8.5 11V6.5h-2v1h1V11H6v1h4v-1z"/><circle cx="8" cy="4.5" r=".75"/><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0-13a6 6 0 1 0 0 12A6 6 0 0 0 8 2z"/></svg></button>
+                  <span id="tip-retention" class="toggletip-bubble" data-i18n="settings.retention.hint">Check-ins older than this are deleted each time the app starts. Members, payments and renewals are kept.</span>
+                </span>
+              </div>
               <div class="expiring-row">
                 <span data-i18n="settings.retention.deleteOlderThan">Delete check-ins older than</span>
                 <input id="retention-days-input" type="number" min="1" max="3650" />
@@ -483,14 +495,13 @@
             </div>
 
             <div class="settings-block">
-              <h3 data-i18n="settings.cooldown.heading">Punch-card re-entry window</h3>
-              <p class="settings-hint" data-i18n="settings.cooldown.hint">
-                A card tapped again within this window checks the member back in without using
-                another pass -- protects against an accidental double-tap, and applies even if that
-                tap spent their last pass. The window counts from the tap that actually spent a
-                pass. Doesn't apply to monthly members, who don't use passes. Set to 0 to turn this
-                off.
-              </p>
+              <div class="settings-heading">
+                <h3 data-i18n="settings.cooldown.heading">Punch-card re-entry window</h3>
+                <span class="toggletip">
+                  <button class="toggletip-button" type="button" aria-expanded="false" aria-controls="tip-cooldown" data-i18n-aria-label="common.moreInfo" aria-label="More info"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8.5 11V6.5h-2v1h1V11H6v1h4v-1z"/><circle cx="8" cy="4.5" r=".75"/><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0-13a6 6 0 1 0 0 12A6 6 0 0 0 8 2z"/></svg></button>
+                  <span id="tip-cooldown" class="toggletip-bubble" data-i18n="settings.cooldown.hint">If a punch card is tapped again within this time, the member gets in without using another pass, even if the first tap used their last one. The time counts from the tap that used a pass. Monthly members aren't affected. Set 0 to turn it off.</span>
+                </span>
+              </div>
               <div class="expiring-row">
                 <span data-i18n="settings.cooldown.noChargeWithin">No extra pass charged within</span>
                 <input id="cooldown-hours-input" type="number" min="0" max="72" />
@@ -501,12 +512,17 @@
             </div>
 
             <div class="settings-block">
-              <h3 data-i18n="settings.updates.heading">Updates</h3>
+              <div class="settings-heading">
+                <h3 data-i18n="settings.updates.heading">Updates</h3>
+                <span class="toggletip">
+                  <button class="toggletip-button" type="button" aria-expanded="false" aria-controls="tip-updates" data-i18n-aria-label="common.moreInfo" aria-label="More info"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8.5 11V6.5h-2v1h1V11H6v1h4v-1z"/><circle cx="8" cy="4.5" r=".75"/><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0-13a6 6 0 1 0 0 12A6 6 0 0 0 8 2z"/></svg></button>
+                  <span id="tip-updates" class="toggletip-bubble" data-i18n="settings.updates.hint">Checks once a day. Nothing is downloaded or installed until you confirm it here.</span>
+                </span>
+              </div>
               <p class="settings-hint">
-                <span data-i18n="settings.updates.currentVersion">Currently running:</span>
+                <span data-i18n="settings.updates.currentVersion">Version:</span>
                 <strong id="current-version-display">--</strong>
               </p>
-              <p class="settings-hint" data-i18n="settings.updates.hint">Checks automatically once a day, and never downloads or installs anything without you confirming it here first. Use the button below any time for an immediate check.</p>
               <div class="update-actions">
                 <button id="check-updates-button" class="renew-button" type="button" data-i18n="settings.updates.check">Check for updates</button>
                 <button id="download-update-button" class="renew-button" type="button" hidden data-i18n="settings.updates.download">Download update</button>

@@ -293,8 +293,8 @@ test('resolveLang falls back to English for an unsupported or missing language',
 });
 
 test('t() interpolates placeholders and falls back to English for a language missing the key', () => {
-  assert.equal(t('en', 'renew.jumpedToCard', { uid: 'ABC123' }), 'Jumped to card ABC123.');
-  assert.equal(t('cs', 'renew.jumpedToCard', { uid: 'ABC123' }), 'Přechod na kartu ABC123.');
+  assert.equal(t('en', 'renew.jumpedToCard', { uid: 'ABC123' }), 'Found card ABC123.');
+  assert.equal(t('cs', 'renew.jumpedToCard', { uid: 'ABC123' }), 'Nalezena karta ABC123.');
   // A key that exists in neither language returns the raw key -- visibly wrong, not a blank string.
   assert.equal(t('en', 'nonexistent.key.here'), 'nonexistent.key.here');
 });

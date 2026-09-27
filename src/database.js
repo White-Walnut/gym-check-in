@@ -1093,7 +1093,7 @@ class GymDatabase {
     return this.db.prepare(`
       SELECT c.id, c.card_uid AS uid, c.checked_in_at AS checkedInAt,
              c.allowed, c.reason,
-             CASE WHEN m.id IS NULL THEN 'Unknown card' ELSE m.first_name || ' ' || m.last_name END AS name
+             CASE WHEN m.id IS NULL THEN NULL ELSE m.first_name || ' ' || m.last_name END AS name
       FROM check_ins c LEFT JOIN members m ON m.id = c.member_id
       ORDER BY c.id DESC LIMIT ?
     `).all(limit).map((row) => ({ ...row, allowed: Boolean(row.allowed) }));
@@ -1128,7 +1128,7 @@ class GymDatabase {
     return this.db.prepare(`
       SELECT c.id, c.card_uid AS uid, c.checked_in_at AS checkedInAt,
              c.allowed, c.reason,
-             CASE WHEN m.id IS NULL THEN 'Unknown card' ELSE m.first_name || ' ' || m.last_name END AS name
+             CASE WHEN m.id IS NULL THEN NULL ELSE m.first_name || ' ' || m.last_name END AS name
       FROM check_ins c LEFT JOIN members m ON m.id = c.member_id
       ${where}
       ORDER BY c.id DESC LIMIT ? OFFSET ?

@@ -14,8 +14,8 @@ const en = {
   // change -- see confirmDiscardAddMember/confirmDiscardEditMember/describeRiskyEditChanges in
   // renderer.js for exactly when each of these fires.
   confirm: {
-    discardAddMember: "You've started adding a new member but haven't saved yet. Discard this and continue?",
-    discardEditMember: "You have unsaved changes to this member's details. Discard them and continue?"
+    discardAddMember: "This new member isn't saved yet. Discard it?",
+    discardEditMember: "Your changes to this member aren't saved. Discard them?"
   },
   common: {
     approved: 'Approved',
@@ -23,6 +23,7 @@ const en = {
     loading: 'Loading…',
     cancel: 'Cancel',
     ok: 'OK',
+    moreInfo: 'More info',
     edit: 'Edit',
     unknownCard: 'Unknown card',
     unrecognisedCard: 'Unrecognised card',
@@ -48,8 +49,8 @@ const en = {
     eyebrow: 'READY FOR CHECK-IN',
     headingCard: 'Tap your member card',
     headingBarcode: 'Scan your membership barcode',
-    subheadCard: 'Hold the card near the reader. Approval appears instantly.',
-    subheadBarcode: 'Point the scanner at your barcode. Approval appears instantly.'
+    subheadCard: 'Hold it near the reader.',
+    subheadBarcode: 'Point the scanner at the barcode.'
   },
 
   result: {
@@ -82,7 +83,7 @@ const en = {
     enter: { heading: 'Enter staff PIN', pinPlaceholder: 'PIN', submit: 'Unlock', forgot: 'Forgot PIN?' },
     setup: {
       heading: 'Set a staff PIN',
-      hint: 'Choose a 4-8 digit PIN. Reception staff will use it to open member management.',
+      hint: 'Use 4 to 8 digits. Staff enter it to open member management.',
       newPinPlaceholder: 'New PIN',
       confirmPinPlaceholder: 'Confirm PIN',
       submit: 'Set PIN',
@@ -100,7 +101,7 @@ const en = {
     },
     reveal: {
       heading: 'Your recovery code',
-      hint: "Write this down and keep it somewhere safe. It's the only way back in if the staff PIN is forgotten, and it won't be shown again.",
+      hint: "Write it down and keep it safe. It's the only way in if the PIN is forgotten, and it won't be shown again.",
       continueButton: "I've saved it, continue"
     }
   },
@@ -108,7 +109,6 @@ const en = {
   addMember: {
     cardCaptureHintCard: 'Tap an unassigned card',
     cardCaptureHintBarcode: 'Scan an unassigned barcode',
-    cardCaptureSubhint: 'The UID will appear here automatically.',
     cardCaptureWaitingCard: 'Waiting for card…',
     cardCaptureWaitingBarcode: 'Waiting for barcode…',
     scanDifferentCardCard: 'Scan a different card',
@@ -136,9 +136,9 @@ const en = {
     searchLabel: 'Find by member name or card UID',
     searchPlaceholder: 'Start typing…',
     scanToFind: 'Scan to find',
-    tapCardToJumpCard: 'Tap a card to jump to that member.',
-    tapCardToJumpBarcode: 'Scan a barcode to jump to that member.',
-    jumpedToCard: 'Jumped to card {uid}.',
+    tapCardToJumpCard: 'Tap the card of the member you want.',
+    tapCardToJumpBarcode: 'Scan the barcode of the member you want.',
+    jumpedToCard: 'Found card {uid}.',
     expiringWithin: 'Expiring within',
     days: 'days',
     show: 'Show',
@@ -169,8 +169,8 @@ const en = {
     metaMonthlyEnded: 'Monthly · ended {date}',
     metaMonthlyNoDate: 'Monthly · no end date',
     metaPunchcard: 'Punch card',
-    renewedMonthly: 'Monthly access extended through {date}.',
-    renewedPunchcard: 'Punch card now has {count} {unit}.',
+    renewedMonthly: 'Valid until {date}.',
+    renewedPunchcard: '{count} {unit} on the card.',
     renewResult: '{name}: {change}',
     updatedSuccess: '{name} updated.',
     deletedSuccess: '{name} was deleted.'
@@ -181,7 +181,7 @@ const en = {
     titleDefault: 'Member details',
     titleEditMember: 'Edit {name}',
     titleSetEndDate: 'Set end date for {name}',
-    chooseExactDate: 'Choose the exact final day of access.',
+    chooseExactDate: 'Choose the last day they can come in.',
     cancel: 'Cancel',
     changePhoto: 'Change photo…',
     takePhoto: 'Take photo',
@@ -204,19 +204,19 @@ const en = {
     membershipPunchcard: 'Punch card',
     customEndDate: 'Custom end date',
     entriesRemaining: 'Entries remaining',
-    amountPaid: 'Amount paid this visit (Kč)',
+    amountPaid: 'Paid now (Kč)',
     exportData: 'Export data…',
     deleteMember: 'Delete member…',
     saveChanges: 'Save changes',
     photoUpdated: 'Photo updated.',
     photoRemoved: 'Photo removed.',
     dataExported: 'Data exported to {path}',
-    deleteConfirm: "Permanently erase {name}'s name, photo, and card? Their check-in and payment history is kept, anonymized, for attendance and revenue records. This cannot be undone. Continue?",
+    deleteConfirm: "Delete {name}? Their name, photo and card are erased for good. Their check-ins and payments stay in the records without a name. This can't be undone.",
     discard: {
       passesLost: '{count} unused {unit}',
       daysLost: '{count} remaining {unit}',
       removes: ' This removes {parts}.',
-      reactivates: ' {name} is currently {status} and will be reactivated.',
+      reactivates: ' {name} is {status} and will become active again.',
       confirm: '{name}:{lossText}{reactivateText} Continue?',
       and: 'and'
     },
@@ -224,8 +224,8 @@ const en = {
     // a measurable balance the way the discard block above does, so nothing else would ever catch a
     // careless click here -- see describeRiskyEditChanges in renderer.js.
     riskyChange: {
-      statusChange: ' Changes their status to {status}.',
-      cardChange: ' Replaces their linked card (was {oldUid}, now {newUid}).',
+      statusChange: ' Status changes to {status}.',
+      cardChange: ' Card changes from {oldUid} to {newUid}.',
       confirm: '{name}:{changes} Continue?'
     }
   },
@@ -245,7 +245,7 @@ const en = {
     exporting: 'Exporting…',
     noMatches: 'No check-ins match those filters.',
     shownCount: '{count} shown',
-    exportedTruncated: 'Exported the most recent {count} matching rows — narrow the date range to get everything older.',
+    exportedTruncated: 'Exported the newest {count} rows. Narrow the dates to export older ones.',
     exportedOk: 'Exported {count} row(s) to {path}.'
   },
 
@@ -261,7 +261,7 @@ const en = {
     exporting: 'Exporting…',
     noMatches: 'No payments match those filters.',
     totalShown: 'Total: {amount} Kč ({count} shown)',
-    exportedTruncated: 'Exported the most recent {count} matching rows — narrow the date range to get everything older.',
+    exportedTruncated: 'Exported the newest {count} rows. Narrow the dates to export older ones.',
     exportedOk: 'Exported {count} row(s) to {path}.',
     eventSignup: 'New member',
     eventRenewal: 'Renewal',
@@ -271,8 +271,8 @@ const en = {
   settings: {
     branding: {
       heading: 'Gym branding',
-      hint: 'Shown in place of the default mark on the check-in screen, the staff header, and the '
-        + 'PIN screen. Leave blank to use the default look.',
+      hint: 'The name shows on the check-in screen, in the staff header and on the PIN screen. The '
+        + 'logo shows in the staff header and on the PIN screen. Leave both empty for the default look.',
       chooseLogo: 'Choose logo…',
       removeLogo: 'Remove logo',
       namePlaceholder: 'Gym name',
@@ -283,15 +283,15 @@ const en = {
     },
     appearance: {
       heading: 'Appearance',
-      hint: "Saved on this PC, so it doesn't need setting again next launch.",
+      hint: 'Saved on this PC.',
       dark: 'Dark',
       light: 'Light',
       lightModeAriaLabel: 'Light mode',
       themes: {
-        slate: { name: 'Blue', subtitle: 'Default' },
-        zinc: { name: 'Orange', subtitle: 'Warm' },
-        emerald: { name: 'Teal', subtitle: 'Cool' },
-        indigo: { name: 'Purple', subtitle: 'Vivid' }
+        slate: { name: 'Blue' },
+        zinc: { name: 'Orange' },
+        emerald: { name: 'Teal' },
+        indigo: { name: 'Purple' }
       }
     },
     language: {
@@ -302,15 +302,14 @@ const en = {
     },
     scanMethod: {
       heading: 'Scan method',
-      hint: 'Changes the on-screen instructions and icon to match your reader -- both a card reader '
-        + 'and a barcode scanner plug in and work the same way underneath, so this is just about '
-        + "showing members the right instructions for what's actually at the desk.",
+      hint: 'Changes the instructions and icon members see. Both devices work the same way, so pick '
+        + 'the one you have at the desk.',
       card: 'Card reader',
       barcode: 'Barcode scanner'
     },
     pin: {
       heading: 'Change staff PIN',
-      hint: '4-8 digits, numbers only.',
+      hint: '4 to 8 digits.',
       currentPlaceholder: 'Current PIN',
       newPlaceholder: 'New PIN',
       confirmPlaceholder: 'Confirm new PIN',
@@ -319,13 +318,12 @@ const en = {
       pinsDoNotMatch: 'New PINs do not match.',
       regenerateRecovery: 'Regenerate recovery code…',
       regeneratePrompt: 'Enter your current PIN to regenerate the recovery code:',
-      newRecoveryCodeAlert: "New recovery code: {code}\n\nWrite this down now -- it won't be shown again, and the old code no longer works."
+      newRecoveryCodeAlert: "New recovery code: {code}\n\nWrite it down now. It won't be shown again, and the old code no longer works."
     },
     backup: {
       heading: 'Backup',
-      hint: 'Save a copy of the member database to a location of your choice. Member photos and your '
-        + 'gym logo are files on disk rather than database entries, so they are saved into a folder '
-        + 'next to the backup -- keep the two together.',
+      hint: 'Saves a copy of the member database. Photos and the logo go into a folder next to the '
+        + 'backup file. Keep the two together.',
       exportButton: 'Export backup…',
       savedSuccess: 'Backup saved to {path}',
       savedSuccessWithFiles: 'Backup saved to {path}, plus {count} photo/logo file(s) in the folder next to it.',
@@ -333,57 +331,48 @@ const en = {
     },
     diagnostics: {
       heading: 'Diagnostics',
-      hint: "If something goes wrong, this saves a record of what happened so it can actually be "
-        + "looked into -- it never leaves this PC on its own. Export it and send the file if you're "
-        + 'asked to.',
+      hint: "Keeps a record of errors on this PC. Nothing is sent anywhere. If you're asked for it, "
+        + 'export the file and send it.',
       exportButton: 'Export log file…',
       openFolderButton: 'Show log file in folder',
       savedSuccess: 'Log file saved to {path}'
     },
     kiosk: {
       heading: 'Kiosk lockdown',
-      hintHtml: 'Makes the customer-facing check-in display fullscreen and blocks Alt+F4 and its '
-        + "close button, so a member at the desk can't casually exit or minimize it. This is a "
-        + 'deterrent, not a full lockdown &mdash; the Windows key, Ctrl+Alt+Delete, and Task '
-        + 'Manager still work and are outside any app\'s control. Turning this off always '
-        + 'works from here, since reaching this screen already required the staff PIN. '
-        + '<strong>Only takes effect when two-screen mode below is also on</strong> &mdash; '
-        + "there's no customer-facing display otherwise, so this has no effect on your own "
-        + 'staff dashboard.',
+      hintHtml: 'Shows the check-in screen full screen and blocks Alt+F4 and the close button, so '
+        + "members can't close it. The Windows key, Ctrl+Alt+Delete and Task Manager still work. "
+        + '<strong>Only works when two-screen mode is on.</strong>',
       enable: 'Enable kiosk lockdown'
     },
     dualScreen: {
       heading: 'Two-screen mode',
-      hint: 'When two monitors are connected, use one purely for check-in results and the other '
-        + 'purely for staff (no more switching between them). Only takes effect the next time '
-        + 'the app starts, and only when a second display is actually detected.',
+      hint: 'With two monitors connected, one shows check-in results to members and the other shows '
+        + 'this dashboard. Takes effect the next time the app starts.',
       enable: 'Use two screens when available'
     },
     retention: {
       heading: 'Data retention',
-      hint: 'Check-in records older than this are deleted automatically each time the app starts. '
-        + 'Member profiles and payment/renewal history are not affected by this setting.',
+      hint: 'Check-ins older than this are deleted each time the app starts. Members, payments and '
+        + 'renewals are kept.',
       deleteOlderThan: 'Delete check-ins older than',
       days: 'days',
       save: 'Save',
-      saved: 'Saved. Takes effect from the next launch onward.'
+      saved: 'Saved. Applies the next time the app starts.'
     },
     cooldown: {
-      heading: 'Punch-card re-entry window',
-      hint: "A card tapped again within this window checks the member back in without using another "
-        + "pass -- protects against an accidental double-tap, and applies even if that tap spent "
-        + "their last pass. The window counts from the tap that actually spent a pass. Doesn't apply "
-        + "to monthly members, who don't use passes. Set to 0 to turn this off.",
+      heading: 'Punch-card re-entry',
+      hint: 'If a punch card is tapped again within this time, the member gets in without using '
+        + 'another pass, even if the first tap used their last one. The time counts from the tap that '
+        + "used a pass. Monthly members aren't affected. Set 0 to turn it off.",
       noChargeWithin: 'No extra pass charged within',
       hours: 'hours',
       save: 'Save',
-      saved: 'Saved. Applies to every check-in from now on.'
+      saved: 'Saved. Applies from now on.'
     },
     updates: {
       heading: 'Updates',
-      currentVersion: 'Currently running:',
-      hint: 'Checks automatically once a day, and never downloads or installs anything without you '
-        + 'confirming it here first. Use the button below any time for an immediate check.',
+      currentVersion: 'Version:',
+      hint: 'Checks once a day. Nothing is downloaded or installed until you confirm it here.',
       check: 'Check for updates',
       download: 'Download update',
       install: 'Restart and install',
@@ -428,7 +417,7 @@ const en = {
     reasons: {
       active: { eyebrow: 'CHECK-IN APPROVED', message: 'Welcome in. Have a good session.' },
       punchcard: { eyebrow: 'PASS APPROVED', message: '' },
-      punchcard_recent: { eyebrow: 'WELCOME BACK', message: "Already checked in recently -- no extra pass used." },
+      punchcard_recent: { eyebrow: 'WELCOME BACK', message: 'You checked in recently, so no pass was used.' },
       expired: { eyebrow: 'MEMBERSHIP EXPIRED', message: 'Please renew at reception before entering.' },
       no_passes: { eyebrow: 'NO PASSES REMAINING', message: 'Please renew the punch card before entering.' },
       frozen: { eyebrow: 'MEMBERSHIP FROZEN', message: 'Please speak with reception before entering.' },
@@ -447,11 +436,11 @@ const en = {
       unreadableTitle: '⚠️ Card unreadable',
       activeBody: 'Valid membership · valid until {validUntil}',
       punchcardBody: 'Valid punch card · {count} {unit} remaining',
-      expiredBody: 'DENIED -- membership expired {validUntil}',
-      noPassesBody: 'DENIED -- punch card is empty',
-      frozenBody: 'DENIED -- membership is frozen',
-      cancelledBody: 'DENIED -- membership is cancelled',
-      unknownBody: 'Not recognised -- UID {uid}',
+      expiredBody: 'DENIED: membership expired {validUntil}',
+      noPassesBody: 'DENIED: punch card is empty',
+      frozenBody: 'DENIED: membership is frozen',
+      cancelledBody: 'DENIED: membership is cancelled',
+      unknownBody: 'Not recognised: UID {uid}',
       errorBody: 'Card was read, but the database returned an error.',
       unreadableBody: 'Ask the member to tap their card again.'
     }
@@ -477,7 +466,7 @@ const en = {
     invalid_retention_days: 'Enter a whole number of days, 1 or more.',
     invalid_cooldown_hours: 'Enter a whole number of hours, 0 or more.',
     operation_failed: 'The change could not be saved. Try again.',
-    no_log_yet: "Nothing has been logged yet -- there's no file to export."
+    no_log_yet: "There's no log file yet."
   },
 
   // Main-process-only strings: native dialog titles/filters and CSV export column headers. Kept in

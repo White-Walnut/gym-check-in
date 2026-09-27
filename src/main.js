@@ -476,7 +476,12 @@ async function runDualScreenSmokeCapture() {
 async function captureWindowScreenshot(win, fileName) {
   // On a hidden (show: false) window, the first capturePage() after a DOM change can occasionally
   // return a stale compositor frame from before the change. A cheap throwaway capture forces a fresh
-  // one before the real capture that gets saved.
+  // one before the real capture that gets saved. That alone wasn't always enough: the Czech-settings
+  // shot came out byte-identical to the previous screenshot twice in a row, even though the DOM had
+  // verifiably switched language. invalidate() asks for a full repaint first, and the short wait lets
+  // that frame actually land.
+  win.webContents.invalidate();
+  await new Promise((resolve) => setTimeout(resolve, 120));
   await win.webContents.capturePage();
   const image = await win.webContents.capturePage();
   fs.writeFileSync(path.join(smokeDirectory, fileName), image.toPNG());
@@ -741,6 +746,21 @@ async function runSmokeCapture() {
   await mainWindow.webContents.executeJavaScript("setAdminTab('settings')");
   await new Promise((resolve) => setTimeout(resolve, 500));
   await captureScreenshot('09-admin-settings.png');
+  // Settings help text lives in (i) bubbles now. A real click should pin one open, and a click
+  // anywhere else should close it again.
+  await mainWindow.webContents.executeJavaScript("document.querySelector('[aria-controls=\"tip-cooldown\"]').click()");
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  const bubbleOpen = await mainWindow.webContents.executeJavaScript(
+    "(() => { const bubble = document.querySelector('#tip-cooldown'); bubble.scrollIntoView({ block: 'center' }); return getComputedStyle(bubble).display !== 'none' && bubble.textContent.length > 20 && document.querySelector('[aria-controls=\"tip-cooldown\"]').getAttribute('aria-expanded') === 'true'; })()"
+  );
+  if (!bubbleOpen) throw new Error('Clicking a Settings (i) button did not open its help bubble');
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  await captureScreenshot('09m-help-bubble.png');
+  await mainWindow.webContents.executeJavaScript("document.querySelector('#admin-settings').click()");
+  const bubbleClosed = await mainWindow.webContents.executeJavaScript(
+    "getComputedStyle(document.querySelector('#tip-cooldown')).display === 'none'"
+  );
+  if (!bubbleClosed) throw new Error('Clicking outside a help bubble did not close it');
   // Gym branding: staff can put their own gym's name/logo in place of the default "GYM CHECK-IN"
   // mark. choose-gym-logo opens a native file dialog (like choose-member-photo) that can't be
   // automated here, so this calls set-gym-logo directly with a real file already on disk
@@ -878,12 +898,22 @@ async function runSmokeCapture() {
   await mainWindow.webContents.executeJavaScript(
     "document.querySelector('[data-language-choice=\"cs\"]').click()"
   );
-  await new Promise((resolve) => setTimeout(resolve, 300));
+  await new Promise((resolve) => setTimeout(resolve, 800));
   const czechHeading = await mainWindow.webContents.executeJavaScript("document.querySelector('#admin-title').textContent");
   if (czechHeading !== 'Správa členů') {
     throw new Error(`Language switch to Czech did not take effect -- #admin-title read "${czechHeading}"`);
   }
   await captureScreenshot('09h-settings-czech.png');
+  // The busiest screens in Czech too, not just Settings: that's where most of the translated text is
+  // (row labels, status tags, plan names, form labels).
+  await mainWindow.webContents.executeJavaScript("setAdminTab('renew')");
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  await captureScreenshot('09h2-members-czech.png');
+  await mainWindow.webContents.executeJavaScript("setAdminTab('add')");
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  await captureScreenshot('09h3-add-member-czech.png');
+  await mainWindow.webContents.executeJavaScript("setAdminTab('settings')");
+  await new Promise((resolve) => setTimeout(resolve, 300));
   await mainWindow.webContents.executeJavaScript(
     "document.querySelector('[data-language-choice=\"en\"]').click()"
   );
@@ -1091,7 +1121,7 @@ async function runSmokeCapture() {
       allowedTab: 'renew',
       clearAfterAllow: false,
       firstNameAfterDiscard: '',
-      riskyBoth: 'Test Person: Changes their status to cancelled. Replaces their linked card (was AAA, now BBB). Continue?',
+      riskyBoth: 'Test Person: Status changes to cancelled. Card changes from AAA to BBB. Continue?',
       riskyNone: null
     };
     for (const key of Object.keys(expected)) {
@@ -1218,7 +1248,11 @@ app.whenReady().then(async () => {
         { key: 'outcome', label: t(currentLanguage, 'main.csv.outcome') },
         { key: 'reason', label: t(currentLanguage, 'main.csv.reason') }
       ],
-      rows.map((row) => ({ ...row, outcome: t(currentLanguage, row.allowed ? 'common.approved' : 'common.denied') }))
+      rows.map((row) => ({
+        ...row,
+        name: row.name || t(currentLanguage, row.reason === 'unknown_card' ? 'common.unknownCard' : 'common.unrecognisedCard'),
+        outcome: t(currentLanguage, row.allowed ? 'common.approved' : 'common.denied')
+      }))
     );
     const target = await showNativeDialog('showSaveDialog', {
       title: t(currentLanguage, 'main.dialogs.exportHistoryTitle'),
