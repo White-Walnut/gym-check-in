@@ -642,6 +642,10 @@ async function runSmokeCapture() {
   }
   await mainWindow.webContents.executeJavaScript("paymentsClearButton.click()");
   await new Promise((resolve) => setTimeout(resolve, 500));
+  // Back to Members: everything below opens the member editor, which lives on that tab. Without
+  // this, the editor opened fine but every screenshot from here to the photo steps showed Payments.
+  await mainWindow.webContents.executeJavaScript("setAdminTab('renew')");
+  await new Promise((resolve) => setTimeout(resolve, 500));
   // Clicking a member's name (not the Edit button) should open the same editor -- exercise the real
   // click listener, not just call openMemberEditor() directly, so this actually verifies the new
   // click-to-edit affordance rather than assuming it's wired correctly.

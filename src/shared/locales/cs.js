@@ -278,10 +278,10 @@ const cs = {
       light: 'Světlý',
       lightModeAriaLabel: 'Světlý režim',
       themes: {
-        slate: { name: 'Slate', subtitle: 'Tmavě modrá a modrý akcent' },
-        zinc: { name: 'Zinc', subtitle: 'Tmavě šedá a oranžový akcent' },
-        emerald: { name: 'Emerald', subtitle: 'Tmavě zelená a zelený akcent' },
-        indigo: { name: 'Indigo', subtitle: 'Tmavě fialová a fialový akcent' }
+        slate: { name: 'Modrá', subtitle: 'Výchozí' },
+        zinc: { name: 'Oranžová', subtitle: 'Teplá' },
+        emerald: { name: 'Tyrkysová', subtitle: 'Chladná' },
+        indigo: { name: 'Fialová', subtitle: 'Výrazná' }
       }
     },
     language: {

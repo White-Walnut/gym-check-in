@@ -288,10 +288,10 @@ const en = {
       light: 'Light',
       lightModeAriaLabel: 'Light mode',
       themes: {
-        slate: { name: 'Slate', subtitle: 'Obsidian & Electric Blue' },
-        zinc: { name: 'Zinc', subtitle: 'Charcoal & Warm Amber' },
-        emerald: { name: 'Emerald', subtitle: 'Deep Forest & Mint' },
-        indigo: { name: 'Indigo', subtitle: 'Midnight & Laser Violet' }
+        slate: { name: 'Blue', subtitle: 'Default' },
+        zinc: { name: 'Orange', subtitle: 'Warm' },
+        emerald: { name: 'Teal', subtitle: 'Cool' },
+        indigo: { name: 'Purple', subtitle: 'Vivid' }
       }
     },
     language: {
