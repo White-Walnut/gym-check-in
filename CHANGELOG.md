@@ -8,6 +8,12 @@ be hand-edited; if a version's list looks wrong, the fix belongs in that script,
 An "Unreleased" section, when present, lists commits already on `main` that haven't shipped in a
 release yet -- the next `npm run release` replaces it with that version's own dated entry.
 
+## v1.9.16 -- 2026-10-08
+
+- Fix: a second launch opened a duplicate app, old check-ins were only purged at startup, and a failed photo save left the file behind
+- Help text in info bubbles, plainer English, Czech rewritten
+- Redesign the staff side in IBM Carbon style
+
 ## v1.9.15 -- 2026-09-08
 
 - Members list: one renewal action per row, and membership state shown as a status chip instead of buried in a sentence
