@@ -42,6 +42,20 @@ if (smokeDirectory) {
   app.setPath('userData', profile);
   app.setPath('sessionData', profile);
 }
+// One running copy per PC. Without this, double-clicking the shortcut while the app is already open
+// starts a second process with its own windows, its own staff session and its own quit prompt, all on
+// the same database. The second launch now just brings the existing window forward and exits. Smoke
+// runs are exempt: each one is a throwaway instance with its own profile.
+if (!smokeDirectory && !app.requestSingleInstanceLock()) {
+  app.exit(0);
+}
+app.on('second-instance', () => {
+  const win = staffFacingWindow();
+  if (!win || win.isDestroyed()) return;
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+});
 // Normal smoke mode always forces single-window (deterministic, no real display dependency). This
 // flag opts a smoke run into the real dual-screen path instead, when actual hardware supports it --
 // see createWindows() and runSmokeCapture() below. Verification-only; never set in production.
@@ -108,6 +122,21 @@ function deleteOwnedPhotoFile(photoPath) {
   } catch (error) {
     logger.logError('photos', 'Could not delete old photo file', error);
   }
+}
+
+// Points a member at a photo file that has already been written into photosDir. If the database
+// update fails (most likely the member was deleted while their editor was still open), the new file
+// is removed again -- otherwise it would sit in photosDir, and in every backup, with nothing
+// referencing it: a photo of someone who was just erased.
+function attachMemberPhoto(memberId, destPath) {
+  let previousPhotoPath;
+  try {
+    ({ previousPhotoPath } = gymDatabase.setMemberPhoto(memberId, destPath));
+  } catch (error) {
+    deleteOwnedPhotoFile(destPath);
+    throw error;
+  }
+  deleteOwnedPhotoFile(previousPhotoPath);
 }
 
 // Same pattern as deleteOwnedPhotoFile above, scoped to brandingDir instead -- the gym logo has no
@@ -1195,10 +1224,20 @@ app.whenReady().then(async () => {
   dualScreenEnabled = gymDatabase.getDualScreenEnabled();
   currentLanguage = gymDatabase.getLanguage();
 
-  // GDPR storage-limitation: prune check-ins past the configured retention window on every launch.
-  // Cheap at this dataset size and means nobody has to remember to do it by hand.
-  const purged = gymDatabase.purgeOldCheckIns();
-  if (purged > 0) console.log(`Purged ${purged} check-in record(s) past the retention window.`);
+  // GDPR storage-limitation: prune check-ins past the configured retention window on every launch,
+  // and again once a day after that -- the front-desk PC can stay on for months, and a launch-only
+  // purge would keep old records for as long as it does. Cheap at this dataset size and means nobody
+  // has to remember to do it by hand.
+  const purgeExpiredCheckIns = () => {
+    try {
+      const purged = gymDatabase.purgeOldCheckIns();
+      if (purged > 0) logger.logInfo('retention', `Purged ${purged} check-in record(s) past the retention window.`);
+    } catch (error) {
+      logger.logError('retention', 'Check-in retention purge failed', error);
+    }
+  };
+  purgeExpiredCheckIns();
+  setInterval(purgeExpiredCheckIns, 24 * 60 * 60 * 1000);
 
   // The smoke-capture path (--smoke-dir=, an in-memory DB reachable only via a CLI flag, never from
   // the packaged end-user app) drives the admin UI directly for screenshots; it isn't a real staff
@@ -1419,8 +1458,7 @@ app.whenReady().then(async () => {
     const destPath = path.join(photosDir, `${memberId}-${Date.now()}${path.extname(sourcePath).toLowerCase()}`);
     fs.copyFileSync(sourcePath, destPath);
 
-    const { previousPhotoPath } = gymDatabase.setMemberPhoto(memberId, destPath);
-    deleteOwnedPhotoFile(previousPhotoPath);
+    attachMemberPhoto(memberId, destPath);
     return { photoPath: destPath };
   }));
   // The member editor's "Take photo" -- a still captured client-side from the webcam via canvas,
@@ -1436,8 +1474,7 @@ app.whenReady().then(async () => {
     const destPath = path.join(photosDir, `${memberId}-${Date.now()}${parsed.extension}`);
     fs.writeFileSync(destPath, parsed.buffer);
 
-    const { previousPhotoPath } = gymDatabase.setMemberPhoto(memberId, destPath);
-    deleteOwnedPhotoFile(previousPhotoPath);
+    attachMemberPhoto(memberId, destPath);
     return { photoPath: destPath };
   }));
   ipcMain.handle('remove-member-photo', (_event, input) => adminResult(() => {
