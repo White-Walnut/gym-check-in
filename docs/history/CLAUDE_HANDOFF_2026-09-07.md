@@ -1,3 +1,7 @@
+> **Historical, kept for reference.** The dialog/focus patch described below was committed in
+> `1265a8a` and shipped in v1.9.14. For the current state of the project, read `HANDOFF.md` in the
+> repo root.
+
 # Dialog focus and renewal cancellation: Claude Code handoff
 
 ## Status first

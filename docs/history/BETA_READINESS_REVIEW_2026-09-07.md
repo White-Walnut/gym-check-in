@@ -1,3 +1,8 @@
+> **Historical, kept for reference.** All five confirmed defects below were fixed in `1265a8a`
+> (v1.9.14), each with regression tests. The release-gate items that still apply (exact installer,
+> physical reader, native dialogs on the real PC, code signing, a test gate in the release script)
+> are tracked in `HANDOFF.md` in the repo root.
+
 # Beta readiness review
 
 Reviewed: 7 September 2026. Source version: 1.9.13, HEAD `014dfb6`, plus existing uncommitted dialog/focus changes.

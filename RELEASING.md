@@ -2,6 +2,19 @@
 
 You don't need to remember any of this -- just open this file each time and copy-paste.
 
+## Before every release
+
+A release goes straight to every installed copy through auto-update, and the release script doesn't
+run any tests itself. So first:
+
+1. `npm test` -- everything must pass.
+2. Run the full Electron smoke test (see **How to verify** in `HANDOFF.md`) and look at the screenshots
+   for the screens you changed.
+3. For anything touching card scanning, dialogs or the database, try it in `--manual-smoke` too.
+
+If you're taking this over from someone else, you need push access to the repo and your own token
+(below). Never reuse someone else's.
+
 ## One-time setup: GitHub CLI
 
 `electron-builder`'s own GitHub-upload step turned out to be unreliable against this repo in

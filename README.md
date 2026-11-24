@@ -5,6 +5,9 @@ the local SQLite database, records the attempt, and tells staff what happened --
 Windows notification and a beep (see **Check-in notifications**), or on a dedicated customer-facing
 display too if you turn on **Two-screen mode**.
 
+Taking over maintenance? Start with [`HANDOFF.md`](HANDOFF.md) (current state, open items, settled
+decisions), then [`RELEASING.md`](RELEASING.md). Coding agents also read [`CLAUDE.md`](CLAUDE.md).
+
 ## Run it
 
 Requirements: Node.js 24 or newer and npm.
@@ -166,10 +169,10 @@ Open **Edit** on any member for the full set of changes:
   Remove photo clears it. A photo can only be added once a member exists (not during the initial
   Add). The camera option needs a webcam and its OS-level permission; if none is available, the
   preview shows an error instead of a blank screen.
-- **Amount paid this visit (Kč)** -- optional, recorded on the payment/renewal history whenever it's
-  filled in, whether or not the edit itself also changes the member's access (e.g. just fixing a
-  name still records the amount) -- same as the quick-renew buttons. There's no in-app view of that
-  history yet; it's included in **Export data…** below.
+- **Paid now (Kč)** -- optional, recorded on the payment/renewal history whenever it's filled in,
+  whether or not the edit itself also changes the member's access (e.g. just fixing a name still
+  records the amount) -- same as the quick-renew buttons. Every recorded amount shows up in the
+  **Payments** tab (see **Payments** below) and in **Export data…**.
 - **Delete member…** -- anonymizes the member (name, photo, and card are erased) rather than removing
   the row, so their check-in and payment history stays intact for attendance/revenue records. The
   card UID is replaced with a placeholder that can never be re-assigned to a real scan, and the member
@@ -246,9 +249,9 @@ even while they're doing something else entirely, like scanning a card in a sepa
 Both fire from the one PC regardless of which window (if any) currently has focus, and neither depends
 on a second monitor -- this is the normal setup for a single staff PC with a plain USB reader.
 
-A **Recent check-ins** panel also sits in the dashboard's header, visible no matter which tab is
-open -- like a chat panel next to a stream -- showing the last 5 check-ins with name and outcome.
-Click an entry to act on it immediately: an unrecognised card jumps to **Add new member** with the UID
+A **Recent check-ins** panel runs down the right-hand side of the dashboard, visible no matter which
+tab is open, showing the last 5 check-ins with name and outcome. Click an entry to act on it
+immediately: an unrecognised card jumps to **Add member** with the UID
 already captured; anything else jumps to **Members**, searched straight to that member. It
 never appears on a kiosk-role window in two-screen mode, since that window can't open the dashboard at
 all.
@@ -261,6 +264,14 @@ by member name/card UID and/or a date range; **Load more** paginates further bac
 saves the currently-filtered list (up to 5,000 rows at a time) to a file, e.g. for handing attendance
 numbers to an accountant. A deleted member's past check-ins still show, under their anonymized
 placeholder name, since deleting a member never touches the check-in log itself.
+
+## Payments
+
+The **Payments** tab lists every signup and renewal that had an amount entered (the optional
+"Amount paid" field on Add member, the prompt after **+1 month**/**+10 passes**, and **Paid now** in
+Edit). Filter by member name and/or a date range. The header shows the total of the rows currently
+listed. **Export CSV…** saves the filtered list (date, name, new member or renewal, plan, amount in
+Kč). Renewals saved without an amount don't appear here, since there's nothing to add up.
 
 ## Two-screen mode (one PC, two monitors) -- optional
 
@@ -298,19 +309,24 @@ borderless fullscreen window with no way to Alt+Tab to another app).
 
 ## Appearance
 
-**Settings** has an **Appearance** panel: a light/dark switch, plus four color schemes --
-**Slate** (obsidian & electric blue), **Zinc** (charcoal & warm amber), **Emerald** (deep forest &
-mint), and **Indigo** (midnight & laser violet). The choice is saved on this PC (`localStorage`, not
-the shared database) and applied before the page even paints on the next launch, so there's no flash
-of the wrong theme. A dual-screen setup's kiosk and staff windows share the same choice automatically,
-since they're the same page.
+The staff side (dashboard, PIN screen, dialogs, toasts) follows IBM's
+[Carbon design system](https://carbondesignsystem.com): square controls, filled fields with a bottom
+border, a dark header bar, tags for member status. The customer-facing kiosk screen keeps its own
+bolder look. Each Settings section keeps its explanation behind a small (i) next to the heading:
+hover to read it, click to keep it open.
 
-Approved/denied always stay a recognizable green/red regardless of which scheme is active -- only
-the neutral surfaces and the accent color (buttons, active tab, focus rings) change. The interface
-font is **Plus Jakarta Sans**, bundled locally (`assets/fonts/`, OFL-licensed -- see the `OFL-*.txt`
-files there) with full Czech diacritic support (ěščřžáíéůú); card UIDs and timestamps use
-**JetBrains Mono** for a sharper, more precise read. Both are self-hosted specifically so nothing
-about this app's offline operation changes -- no fonts are ever fetched over a network.
+**Settings** has an **Appearance** panel: a light/dark switch (Carbon's White and Gray 100 themes),
+plus four accent colours: **Blue** (Carbon's default), **Orange**, **Teal** and **Purple**. The
+accent only changes buttons, links, focus rings and the selected tab. The choice is saved on this PC
+(`localStorage`, not the shared database) and applied before the page paints on the next launch, so
+there's no flash of the wrong theme. In two-screen mode the kiosk and staff windows share the same
+choice, since they're the same page.
+
+Approved/denied always stay a recognizable green/red regardless of which accent is active. The staff
+side uses **IBM Plex Sans** and **IBM Plex Mono** (Carbon's typeface); the kiosk screen uses **Plus
+Jakarta Sans** and **JetBrains Mono**. All four are bundled locally in `assets/fonts/` (OFL-licensed,
+see the `OFL-*.txt` files there), including the latin-ext subset that carries Czech diacritics
+(ěščřžáíéůú), so the app never fetches a font over the network.
 
 ## Language
 
@@ -424,10 +440,10 @@ Settings. The "Check for updates" button there also triggers an immediate manual
 - Shared UID-normalisation and date-math logic lives in `src/shared/` and is used by both the main
   process and the renderer (loaded directly as `<script>` tags -- Electron's sandboxed preload can't
   `require()` local project files), so the two sides can't quietly disagree.
-- Theming (see **Appearance**) is a small, self-contained system: `theme.js` applies the saved
-  `data-theme`/`data-mode` attributes to `<html>` before `styles.css` is even parsed (no flash of the
-  wrong theme), and every themed color in that stylesheet is one of a handful of CSS custom
-  properties (`--bg-app`, `--bg-panel`, `--bg-raised`, `--border`, `--text-main`, `--text-muted`,
-  `--accent`, plus `--success`/`--danger`, fixed per light/dark mode rather than per color scheme) --
-  adding a fifth color scheme means adding one more attribute-selector block of variable values, not
-  touching the ~300 rules that use them.
+- Theming (see **Appearance**): `theme.js` applies the saved `data-theme`/`data-mode` attributes to
+  `<html>` before `styles.css` is parsed (no flash of the wrong theme). `styles.css` has two token
+  sets driven by those same attributes. The kiosk screen uses `--bg-*`, `--text-*`, `--accent` and
+  `--success`/`--danger`. The staff side uses Carbon's own token names (`--cds-background`,
+  `--cds-layer-01`, `--cds-button-primary`, ...), hand-written from Carbon v11 so there's no Sass build.
+  The stored theme keys are still `slate`/`zinc`/`emerald`/`indigo` from before the Carbon redesign,
+  so a saved choice carries over; they map to Blue/Orange/Teal/Purple.

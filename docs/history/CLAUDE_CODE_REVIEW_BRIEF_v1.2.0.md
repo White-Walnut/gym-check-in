@@ -1,3 +1,6 @@
+> **Historical, kept for reference.** Written for version 1.2.0 (August 2026). Much of the behaviour
+> it describes has changed since. Read `README.md` and `HANDOFF.md` in the repo root instead.
+
 # Claude Code review brief: Gym Check-in 1.2.0
 
 ## Your task
